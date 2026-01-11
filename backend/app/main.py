@@ -65,10 +65,14 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify actual frontend domains
+    allow_origins=[
+        "https://frontend-phi-ruby-64.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:3001"
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-OpenAI-Domain-Key"],
 )
 
 # Register routes
