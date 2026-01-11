@@ -1,0 +1,338 @@
+# Deployment Guide
+
+## Overview
+
+This guide covers deploying the AI Todo Chatbot to production.
+
+## Architecture
+
+- **Backend**: FastAPI on Heroku/Railway/Render
+- **Frontend**: Next.js on Vercel
+- **Database**: Neon Serverless PostgreSQL (already in cloud)
+
+## Backend Deployment
+
+### Option 1: Heroku
+
+#### Prerequisites
+- Heroku account
+- Heroku CLI installed
+
+#### Steps
+
+1. **Login to Heroku**
+   ```bash
+   heroku login
+   ```
+
+2. **Create Heroku App**
+   ```bash
+   cd backend
+   heroku create your-todo-chatbot-api
+   ```
+
+3. **Set Environment Variables**
+   ```bash
+   heroku config:set DATABASE_URL="postgresql://..."
+   heroku config:set OPENAI_API_KEY="sk-..."
+   heroku config:set ENV="production"
+   heroku config:set DEBUG="false"
+   ```
+
+4. **Deploy**
+   ```bash
+   git init
+   git add .
+   git commit -m "Initial deployment"
+   heroku git:remote -a your-todo-chatbot-api
+   git push heroku main
+   ```
+
+5. **Run Migrations**
+   ```bash
+   heroku run alembic upgrade head
+   ```
+
+6. **Verify**
+   ```bash
+   heroku open
+   ```
+
+### Option 2: Railway
+
+#### Steps
+
+1. **Go to Railway.app**
+   - Sign up/Login
+
+2. **New Project**
+   - Select "Deploy from GitHub repo"
+   - Choose your repository
+   - Set root directory to `backend`
+
+3. **Environment Variables**
+   Add in Railway dashboard:
+   - `DATABASE_URL`
+   - `OPENAI_API_KEY`
+   - `ENV=production`
+   - `DEBUG=false`
+
+4. **Deploy**
+   - Railway auto-deploys on push
+   - Run migrations: `alembic upgrade head` in Railway console
+
+### Option 3: Render
+
+#### Steps
+
+1. **Go to Render.com**
+   - Sign up/Login
+
+2. **New Web Service**
+   - Connect GitHub repository
+   - Set root directory: `backend`
+   - Build command: `pip install -r requirements.txt`
+   - Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+
+3. **Environment Variables**
+   - `DATABASE_URL`
+   - `OPENAI_API_KEY`
+   - `ENV=production`
+   - `DEBUG=false`
+
+4. **Deploy**
+   - Render auto-deploys
+   - Run migrations in Shell: `alembic upgrade head`
+
+## Frontend Deployment
+
+### Vercel (Recommended)
+
+#### Prerequisites
+- Vercel account
+- GitHub repository
+
+#### Steps
+
+1. **Import Project**
+   - Go to https://vercel.com
+   - Click "New Project"
+   - Import your GitHub repository
+   - Set root directory to `frontend`
+
+2. **Configure Build**
+   - Framework Preset: Next.js
+   - Build Command: `npm run build` (auto-detected)
+   - Output Directory: `.next` (auto-detected)
+
+3. **Environment Variables**
+   Add in Vercel dashboard:
+   ```
+   NEXT_PUBLIC_API_URL=https://your-backend.herokuapp.com
+   NEXT_PUBLIC_USER_ID=demo_user
+   ```
+
+4. **Deploy**
+   - Click "Deploy"
+   - Vercel auto-deploys on every push to main
+
+5. **Custom Domain (Optional)**
+   - Add custom domain in Vercel settings
+   - Configure DNS records
+
+## Database Setup
+
+### Neon PostgreSQL
+
+Your Neon database is already in production:
+- No additional deployment needed
+- Connection pooling enabled by default
+- Automatic backups included
+
+#### Production Optimizations
+
+1. **Enable Connection Pooling**
+   - Already configured in `backend/app/database.py`
+   - Adjust pool size if needed for high traffic
+
+2. **Set Up Read Replicas** (Optional)
+   - Available in Neon paid plans
+   - Configure read-only endpoints for list operations
+
+## Post-Deployment
+
+### 1. Run Migrations
+
+After first deployment:
+```bash
+# Heroku
+heroku run alembic upgrade head
+
+# Railway
+# Run in Railway console: alembic upgrade head
+
+# Render
+# Run in Shell: alembic upgrade head
+```
+
+### 2. Test Deployment
+
+#### Test Backend
+```bash
+curl -X POST "https://your-backend.herokuapp.com/api/test_user/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Add a task to test deployment"}'
+```
+
+#### Test Frontend
+- Visit your Vercel URL
+- Try adding/listing tasks
+
+### 3. Monitor
+
+#### Backend Monitoring
+- Heroku: `heroku logs --tail`
+- Railway: View logs in dashboard
+- Render: View logs in dashboard
+
+#### Frontend Monitoring
+- Vercel Analytics (built-in)
+- Vercel Logs in dashboard
+
+### 4. Set Up CI/CD
+
+Both Vercel and Heroku/Railway support auto-deployment:
+- Push to `main` → Automatic production deployment
+- Push to other branches → Preview deployments (Vercel)
+
+## Environment Variables Summary
+
+### Backend
+```env
+DATABASE_URL=postgresql://user:pass@host/db
+OPENAI_API_KEY=sk-...
+ENV=production
+DEBUG=false
+```
+
+### Frontend
+```env
+NEXT_PUBLIC_API_URL=https://your-backend-url.com
+NEXT_PUBLIC_USER_ID=demo_user
+```
+
+## Security Checklist
+
+- ✅ Never commit `.env` files
+- ✅ Use environment variables for secrets
+- ✅ Enable HTTPS (auto on Heroku/Vercel)
+- ✅ Configure CORS for frontend domain only
+- ✅ Use connection pooling
+- ✅ Set `DEBUG=false` in production
+
+## Scaling
+
+### Backend Scaling
+
+**Horizontal Scaling** (Add more instances):
+- Heroku: `heroku ps:scale web=2`
+- Railway/Render: Adjust in dashboard
+
+**Vertical Scaling** (Bigger instances):
+- Upgrade dyno/plan size
+
+### Frontend Scaling
+- Vercel handles this automatically
+- CDN distribution included
+
+### Database Scaling
+- Neon auto-scales compute
+- Upgrade plan for more storage/connections
+
+## Costs
+
+### Free Tier
+- **Heroku**: Free dynos (sleeps after 30 min inactivity)
+- **Railway**: $5 free credit/month
+- **Render**: Free tier with limitations
+- **Vercel**: Free for personal projects
+- **Neon**: Free tier (0.5GB storage)
+
+### Estimated Costs (Low Traffic)
+- Backend: $7-25/month
+- Frontend: Free (Vercel)
+- Database: Free (Neon)
+- **Total**: $7-25/month
+
+## Troubleshooting
+
+### Build Failures
+
+**Backend build fails**:
+- Check `requirements.txt` is up to date
+- Verify Python version in `runtime.txt`
+
+**Frontend build fails**:
+- Run `npm install` locally first
+- Check for TypeScript errors
+
+### Runtime Errors
+
+**Database connection fails**:
+- Verify `DATABASE_URL` is set correctly
+- Check Neon IP allowlist (if enabled)
+
+**OpenAI API errors**:
+- Verify API key is valid
+- Check OpenAI account has credits
+
+### Performance Issues
+
+**Slow response times**:
+- Enable connection pooling (already configured)
+- Increase backend instances
+- Use Redis for caching (advanced)
+
+## Rollback
+
+### Heroku
+```bash
+heroku releases
+heroku rollback v123
+```
+
+### Vercel
+- Go to Deployments
+- Select previous deployment
+- Click "Promote to Production"
+
+## Backup & Recovery
+
+### Database Backups
+- Neon: Automatic daily backups (7-day retention)
+- Manual backup: Use `pg_dump`
+
+### Code Backups
+- Git repository is your backup
+- Use tags for releases: `git tag v1.0.0`
+
+## Monitoring & Alerts
+
+### Recommended Tools
+- **Sentry**: Error tracking
+- **Datadog**: Performance monitoring
+- **Better Uptime**: Uptime monitoring
+
+### Basic Health Checks
+- Backend: `/health` endpoint
+- Set up Uptime Robot (free) to ping every 5 min
+
+## Support
+
+For deployment issues:
+1. Check platform-specific documentation
+2. Review logs for error messages
+3. Verify environment variables
+4. Test locally first
+
+Good luck with your deployment! 🚀

@@ -1,0 +1,201 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #ffffff;
+  color: #1f2937;
+}
+
+/* ChatKit Message List Container */
+.cs-message-list {
+  padding: 0 !important;
+  height: 100% !important;
+  width: 100% !important;
+  background: #ffffff !important;
+}
+
+.cs-message-list__scroll-wrapper {
+  padding: 32px 24px !important;
+  box-sizing: border-box !important;
+  max-width: 720px !important;
+  margin: 0 auto !important;
+  min-height: 100% !important;
+  display: block !important;
+}
+
+/* Individual Messages */
+.cs-message {
+  margin-bottom: 20px !important;
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* User Messages - Left Aligned with Bubble */
+.cs-message--outgoing {
+  align-items: flex-start !important;
+}
+
+.cs-message--outgoing .cs-message__content {
+  background: #f4f4f4 !important;
+  color: #1f2937 !important;
+  padding: 12px 16px !important;
+  border-radius: 18px !important;
+  font-size: 15px !important;
+  line-height: 1.5 !important;
+  max-width: 65% !important;
+  border: none !important;
+  box-shadow: none !important;
+  display: inline-block !important;
+  width: auto !important;
+}
+
+/* Assistant Messages - Right Aligned, Full-Width Paragraph Style */
+.cs-message--incoming {
+  align-items: flex-end !important;
+}
+
+.cs-message--incoming .cs-message__content {
+  background: transparent !important;
+  color: #374151 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  font-size: 15px !important;
+  line-height: 1.75 !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  border: none !important;
+  box-shadow: none !important;
+  font-weight: 400 !important;
+  text-align: left !important;
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+}
+
+/* ChatKit Message Input Styling */
+.cs-message-input {
+  border-top: 1px solid #e5e7eb !important;
+  padding: 16px 20px !important;
+  background: #ffffff !important;
+}
+
+.cs-message-input__content-editor-wrapper {
+  max-width: 768px !important;
+  margin: 0 auto !important;
+  position: relative !important;
+  background: white !important;
+}
+
+.cs-message-input__content-editor-container {
+  background-color: white !important;
+}
+
+.cs-message-input__content-editor {
+  border-radius: 24px !important;
+  border: 1px solid #d1d5db !important;
+  padding: 14px 52px 14px 18px !important;
+  font-size: 15px !important;
+  line-height: 1.5 !important;
+  background: #f7f7f8 !important;
+  box-shadow: none !important;
+  transition: all 0.15s ease !important;
+  font-weight: 400 !important;
+}
+
+.cs-message-input__content-editor::placeholder {
+  color: #8e8ea0 !important;
+  font-weight: 400 !important;
+  font-size: 14px !important;
+  opacity: 1 !important;
+}
+
+.cs-message-input__content-editor:focus {
+  outline: none !important;
+  border-color: #10a37f !important;
+  background: #ffffff !important;
+  box-shadow: 0 0 0 1px #10a37f !important;
+}
+
+.cs-button--send {
+  background: #10a37f !important;
+  border-radius: 8px !important;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: none !important;
+  cursor: pointer !important;
+  transition: background 0.15s ease !important;
+  position: absolute !important;
+  right: 12px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.cs-button--send svg {
+  width: 18px !important;
+  height: 18px !important;
+  color: white !important;
+}
+
+.cs-button--send:hover:not(:disabled) {
+  background: #0e9270 !important;
+}
+
+.cs-button--send:disabled {
+  background: #d1d5db !important;
+  cursor: not-allowed !important;
+  opacity: 0.5 !important;
+}
+
+/* Typing Indicator */
+.cs-typing-indicator {
+  padding: 8px 16px !important;
+  background: #f3f4f6 !important;
+  border-radius: 16px !important;
+  display: inline-block !important;
+}
+
+/* Avatar Styling */
+.cs-message__avatar {
+  display: none !important;
+}
+
+/* Remove any alert or card-like styling */
+.cs-message__content-wrapper {
+  width: 100% !important;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+

@@ -1,0 +1,1648 @@
+# SpecKit Specification: Phase III AI Todo Chatbot
+
+## Document Information
+- **Project**: AI-Powered Todo Chatbot (Phase III)
+- **Version**: 1.0.0
+- **Date**: January 3, 2026
+- **Status**: Draft
+- **Constitution**: See speckit.constitution for binding principles
+
+## Executive Summary
+
+Phase III delivers a conversational AI interface for task management, allowing users to manage todos through natural language. The system uses OpenAI Agents SDK with MCP tools to provide intelligent task management while maintaining a completely stateless backend architecture.
+
+## System Overview
+
+### Architecture
+```
+┌─────────────────┐     ┌──────────────────────────────────────────────┐     ┌─────────────────┐
+│                 │     │              FastAPI Server                   │     │                 │
+│                 │     │  ┌────────────────────────────────────────┐  │     │                 │
+│  ChatKit UI     │────▶│  │         Chat Endpoint                  │  │     │    Neon DB      │
+│  (Frontend)     │     │  │  POST /api/{user_id}/chat              │  │     │  (PostgreSQL)   │
+│                 │     │  └───────────────┬────────────────────────┘  │     │                 │
+│                 │     │                  │                           │     │  - tasks        │
+│                 │     │                  ▼                           │     │  - conversations│
+│                 │     │  ┌────────────────────────────────────────┐  │     │  - messages     │
+│                 │◀────│  │      OpenAI Agents SDK                 │  │     │                 │
+│                 │     │  │      (Agent + Runner)                  │  │     │                 │
+│                 │     │  └───────────────┬────────────────────────┘  │     │                 │
+│                 │     │                  │                           │     │                 │
+│                 │     │                  ▼                           │     │                 │
+│                 │     │  ┌────────────────────────────────────────┐  │     │                 │
+│                 │     │  │         MCP Server                     │  │────▶│                 │
+│                 │     │  │  (MCP Tools for Task Operations)       │  │◀────│                 │
+│                 │     │  └────────────────────────────────────────┘  │     │                 │
+└─────────────────┘     └──────────────────────────────────────────────┘     └─────────────────┘
+```
+
+### Technology Stack
+| Component | Technology |
+|-----------|------------|
+| Frontend | OpenAI ChatKit |
+| Backend | Python FastAPI |
+| AI Framework | OpenAI Agents SDK |
+| MCP Server | Official MCP SDK |
+| ORM | SQLModel |
+| Database | Neon Serverless PostgreSQL |
+| Authentication | Better Auth |
+
+### Key Characteristics
+- **Interface**: Natural language conversation via ChatKit
+- **Endpoint**: Single chat endpoint for all interactions
+- **State**: Fully persisted in database (stateless server)
+- **AI**: OpenAI Agents SDK with function calling
+- **Tools**: MCP-compliant stateless tools
+- **Database**: PostgreSQL (Neon) via SQLModel
+
+---
+
+## 1. USER JOURNEYS
+
+### Journey 1: Add Task via Natural Language
+
+**User Goal**: Create a new task using conversational language
+
+**Conversation Flow**:
+```
+User: "Add a task to buy groceries tomorrow"
+Assistant: "I've added 'Buy groceries tomorrow' to your task list."
+
+User: "Remind me to call mom, it's important"
+Assistant: "I've added 'Call mom' to your task list with high priority."
+
+User: "Create a task: finish project report by Friday"
+Assistant: "I've added 'Finish project report by Friday' to your task list."
+```
+
+**Acceptance Criteria**:
+- ✅ User can describe task in natural language
+- ✅ System extracts task title and optional details (priority, description)
+- ✅ Task is created and immediately persisted to database
+- ✅ User receives confirmation with task details
+- ✅ Task is associated with correct user_id
+- ✅ Natural variations understood ("add", "create", "remind me to", etc.)
+
+**Technical Flow**:
+1. User sends message to `/api/{user_id}/chat`
+2. OpenAI Agent analyzes intent → identifies "create task"
+3. Agent calls `add_task` MCP tool with extracted parameters
+4. Tool creates task in database with user_id
+5. Agent responds with confirmation
+6. Message exchange saved to conversation history
+
+**Edge Cases**:
+- Empty/vague task: "Add a task" → Agent asks for details
+- Multiple tasks in one message → Agent confirms handling multiple
+- Task with deadline → Extract and store due date if possible
+
+---
+
+### Journey 2: List Tasks
+
+**User Goal**: View tasks with various filters
+
+#### 2a. List All Tasks
+```
+User: "Show me my tasks"
+Assistant: "Here are your tasks:
+1. Buy groceries tomorrow (Pending)
+2. Call mom (Pending, High Priority)
+3. Finish project report by Friday (Pending)"
+```
+
+#### 2b. List Pending Tasks
+```
+User: "What do I need to do?"
+Assistant: "You have 3 pending tasks:
+1. Buy groceries tomorrow
+2. Call mom (High Priority)
+3. Finish project report by Friday"
+```
+
+#### 2c. List Completed Tasks
+```
+User: "Show completed tasks"
+Assistant: "You've completed 2 tasks:
+1. Submit timesheet (Completed on Jan 2)
+2. Team meeting (Completed on Jan 1)"
+```
+
+**Acceptance Criteria**:
+- ✅ User can list all tasks
+- ✅ User can filter by status (pending/completed)
+- ✅ User can filter by priority
+- ✅ Results show task ID, title, status, and priority
+- ✅ Empty lists handled gracefully
+- ✅ Tasks sorted logically (priority > created date)
+- ✅ Only user's own tasks returned
+
+**Technical Flow**:
+1. User sends list request
+2. Agent identifies "list tasks" intent
+3. Agent calls `list_tasks` MCP tool with filters (status, priority, user_id)
+4. Tool queries database and returns results
+5. Agent formats results in readable format
+6. Response returned to user
+
+**Natural Language Variations**:
+- "Show my tasks", "What's on my list?", "List todos"
+- "What do I need to do?", "Pending tasks"
+- "What have I completed?", "Finished tasks"
+
+---
+
+### Journey 3: Complete Task
+
+**User Goal**: Mark a task as completed
+
+**Conversation Flow**:
+```
+User: "I finished buying groceries"
+Assistant: "Great! I've marked 'Buy groceries tomorrow' as completed."
+
+User: "Complete task 2"
+Assistant: "Task 'Call mom' has been marked as completed."
+
+User: "Mark the project report as done"
+Assistant: "I've completed 'Finish project report by Friday'. Well done!"
+```
+
+**Acceptance Criteria**:
+- ✅ User can complete task by title or ID
+- ✅ Task status updated to "completed" in database
+- ✅ Completion timestamp recorded
+- ✅ User receives confirmation
+- ✅ Already completed tasks handled gracefully
+- ✅ Task not found error handled
+- ✅ Only user's own tasks can be completed
+
+**Technical Flow**:
+1. User sends completion message
+2. Agent identifies "complete task" intent
+3. Agent extracts task identifier (ID or title)
+4. Agent calls `complete_task` MCP tool
+5. Tool updates task status and completion timestamp
+6. Agent confirms completion
+
+**Natural Language Variations**:
+- "Done with [task]", "Finished [task]", "Complete [task]"
+- "Mark [task] as done/completed"
+- "Task [id] is done"
+
+---
+
+### Journey 4: Delete Task
+
+**User Goal**: Remove a task from the list
+
+**Conversation Flow**:
+```
+User: "Delete the groceries task"
+Assistant: "I've deleted 'Buy groceries tomorrow' from your task list."
+
+User: "Remove task 3"
+Assistant: "Task 'Finish project report by Friday' has been removed."
+
+User: "Cancel the call mom reminder"
+Assistant: "I've deleted 'Call mom' from your list."
+```
+
+**Acceptance Criteria**:
+- ✅ User can delete task by title or ID
+- ✅ Task removed from database (hard delete)
+- ✅ User receives confirmation with task name
+- ✅ Task not found error handled gracefully
+- ✅ Only user's own tasks can be deleted
+- ✅ Optional: Confirmation for important tasks
+
+**Technical Flow**:
+1. User sends deletion message
+2. Agent identifies "delete task" intent
+3. Agent extracts task identifier
+4. Agent calls `delete_task` MCP tool
+5. Tool removes task from database
+6. Agent confirms deletion
+
+**Natural Language Variations**:
+- "Delete [task]", "Remove [task]", "Cancel [task]"
+- "Get rid of [task]", "Discard [task]"
+
+---
+
+### Journey 5: Update Task
+
+**User Goal**: Modify task details (title, priority, description)
+
+**Conversation Flow**:
+```
+User: "Change 'buy groceries' to 'buy groceries and milk'"
+Assistant: "I've updated the task title to 'Buy groceries and milk'."
+
+User: "Make task 2 high priority"
+Assistant: "I've set 'Call mom' to high priority."
+
+User: "Update project report task - add note: needs executive summary"
+Assistant: "I've added the note to 'Finish project report by Friday'."
+```
+
+**Acceptance Criteria**:
+- ✅ User can update task title
+- ✅ User can update task priority (low/medium/high)
+- ✅ User can update task description/notes
+- ✅ User can identify task by title or ID
+- ✅ Changes persisted to database immediately
+- ✅ User receives confirmation of changes
+- ✅ Task not found error handled
+- ✅ Only user's own tasks can be updated
+
+**Technical Flow**:
+1. User sends update message
+2. Agent identifies "update task" intent
+3. Agent extracts task identifier and changes
+4. Agent calls `update_task` MCP tool
+5. Tool updates task fields in database
+6. Agent confirms update
+
+**Natural Language Variations**:
+- "Change [task] to [new title]"
+- "Update [task] - [changes]"
+- "Set [task] to [priority] priority"
+- "Add note to [task]: [note]"
+
+---
+
+## 2. CONVERSATION BEHAVIOR
+
+### 2.1 Stateless Request Cycle
+
+**Principle**: Each request is independent; no server-side memory
+
+**Request Processing Flow**:
+```
+1. Request arrives → POST /api/{user_id}/chat
+2. Load conversation context from database (if conversation_id provided)
+3. Append new user message to context
+4. Send context + message to OpenAI Agent
+5. Agent processes with MCP tools
+6. Save assistant response to database
+7. Return response to user
+8. Discard all in-memory state
+```
+
+**Acceptance Criteria**:
+- ✅ No conversation state stored in application memory
+- ✅ Each request independently loads context from database
+- ✅ Multiple backend instances can serve same user
+- ✅ Application restart doesn't lose conversations
+- ✅ Request processing time < 2 seconds average
+
+**Implementation Requirements**:
+```python
+# Pseudo-code pattern
+async def chat(user_id: str, request: ChatRequest):
+    # 1. Load conversation from DB
+    conversation = await load_conversation(request.conversation_id, user_id)
+    
+    # 2. Append user message
+    await save_message(conversation.id, user_id, "user", request.message)
+    
+    # 3. Get full message history
+    messages = await get_conversation_messages(conversation.id, user_id)
+    
+    # 4. Process with OpenAI Agent (with MCP tools)
+    response = await openai_agent.chat(messages)
+    
+    # 5. Save assistant response
+    await save_message(conversation.id, user_id, "assistant", response)
+    
+    # 6. Return response
+    return ChatResponse(
+        response=response,
+        conversation_id=conversation.id,
+        timestamp=now()
+    )
+    # 7. Function ends → all local state discarded
+```
+
+**Verification Tests**:
+- Server restart mid-conversation → User can continue seamlessly
+- Load balancer switches servers → No conversation interruption
+- Memory usage stable regardless of conversation length
+
+---
+
+### 2.2 Conversation Resume via Database
+
+**Principle**: Users can resume conversations across sessions
+
+**New Conversation**:
+```
+Request: POST /api/user123/chat
+Body: {
+  "message": "Add a task to buy milk"
+  // No conversation_id
+}
+
+Response: {
+  "response": "I've added 'Buy milk' to your task list.",
+  "conversation_id": "conv_abc123",
+  "timestamp": "2026-01-03T10:30:00Z"
+}
+```
+
+**Resume Conversation**:
+```
+Request: POST /api/user123/chat
+Body: {
+  "message": "What tasks do I have?",
+  "conversation_id": "conv_abc123"  // Same ID from before
+}
+
+Response: {
+  "response": "You have 1 pending task:\n1. Buy milk (Pending)",
+  "conversation_id": "conv_abc123",
+  "timestamp": "2026-01-03T10:35:00Z"
+}
+```
+
+**Acceptance Criteria**:
+- ✅ New conversations created when no conversation_id provided
+- ✅ Existing conversations loaded when conversation_id provided
+- ✅ Full message history maintained in database
+- ✅ Conversation context preserved across days/weeks
+- ✅ Invalid conversation_id returns 404 error
+- ✅ Cross-user conversation access returns 403 error
+- ✅ Agent has access to full conversation history for context
+
+**Database Schema**:
+```sql
+-- Conversation tracking
+CREATE TABLE conversations (
+    id UUID PRIMARY KEY,
+    user_id VARCHAR NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    status VARCHAR DEFAULT 'active'
+);
+
+CREATE INDEX idx_conversations_user ON conversations(user_id);
+
+-- Message history
+CREATE TABLE messages (
+    id UUID PRIMARY KEY,
+    conversation_id UUID REFERENCES conversations(id),
+    user_id VARCHAR NOT NULL,
+    role VARCHAR NOT NULL,  -- 'user' or 'assistant'
+    content TEXT NOT NULL,
+    timestamp TIMESTAMP DEFAULT NOW(),
+    metadata JSONB
+);
+
+CREATE INDEX idx_messages_conversation ON messages(conversation_id);
+CREATE INDEX idx_messages_user ON messages(user_id);
+```
+
+---
+
+## 3. MCP TOOL SPECIFICATIONS
+
+### Tool Design Principles
+1. **Stateless**: No shared state between calls
+2. **Database-backed**: All operations directly on database
+3. **User-scoped**: Always filter by user_id
+4. **Validation**: Input validation on all parameters
+5. **Error handling**: Return structured errors
+
+---
+
+### Tool 1: add_task
+
+**Purpose**: Create a new task for the user
+
+**Function Signature**:
+```python
+async def add_task(
+    user_id: str,
+    title: str,
+    description: str = ""
+) -> dict
+```
+
+**Parameters**:
+- `user_id` (string, required): User identifier for task ownership
+- `title` (string, required): Task title/summary
+- `description` (string, optional): Detailed task description
+
+**Return Value**:
+```json
+{
+  "task_id": 5,
+  "status": "created",
+  "title": "Buy groceries"
+}
+```
+
+**Example Input**:
+```json
+{
+  "user_id": "ziakhan",
+  "title": "Buy groceries",
+  "description": "Milk, eggs, bread"
+}
+```
+
+**Example Output**:
+```json
+{
+  "task_id": 5,
+  "status": "created",
+  "title": "Buy groceries"
+}
+```
+
+**Acceptance Criteria**:
+- ✅ Creates task in database with all provided fields
+- ✅ Sets completed to False by default
+- ✅ Generates unique task_id
+- ✅ Records created_at and updated_at timestamps
+- ✅ Associates task with user_id
+- ✅ Returns task_id, status="created", and title
+
+**Error Cases**:
+- Empty title → `{"error": "MISSING_TITLE", "message": "Task title is required"}`
+- Title too long → `{"error": "TITLE_TOO_LONG", "message": "Title must be 200 characters or less"}`
+
+---
+
+### Tool 2: list_tasks
+
+**Purpose**: Retrieve tasks with optional filtering
+
+**Function Signature**:
+```python
+async def list_tasks(
+    user_id: str,
+    status: Optional[str] = None
+) -> dict
+```
+
+**Parameters**:
+- `user_id` (string, required): User identifier
+- `status` (string, optional): Filter by "all", "pending", or "completed"
+
+**Return Value**:
+```json
+[
+  {
+    "id": 1,
+    "title": "Buy groceries",
+    "completed": false
+  },
+  {
+    "id": 2,
+    "title": "Call mom",
+    "completed": false
+  }
+]
+```
+
+**Example Input**:
+```json
+{
+  "user_id": "ziakhan",
+  "status": "pending"
+}
+```
+
+**Example Output**:
+```json
+[
+  {"id": 1, "title": "Buy groceries", "completed": false},
+  {"id": 2, "title": "Call mom", "completed": false}
+]
+```
+
+**Acceptance Criteria**:
+- ✅ Returns only tasks belonging to user_id
+- ✅ Filters by status when provided ("all", "pending", "completed")
+- ✅ Returns all tasks when status="all" or status not provided
+- ✅ Returns tasks where completed=false when status="pending"
+- ✅ Returns tasks where completed=true when status="completed"
+- ✅ Returns array of task objects with id, title, and completed fields
+- ✅ Returns empty array when no tasks match
+- ✅ Orders by created_at descending (newest first)
+
+**Error Cases**:
+- Invalid status value → `{"error": "INVALID_STATUS", "message": "Status must be all, pending, or completed"}`
+
+---
+
+### Tool 3: complete_task
+
+**Purpose**: Mark a task as completed
+
+**Function Signature**:
+```python
+async def complete_task(
+    user_id: str,
+    task_id: int
+) -> dict
+```
+
+**Parameters**:
+- `user_id` (string, required): User identifier
+- `task_id` (integer, required): Task identifier to complete
+
+**Return Value**:
+```json
+{
+  "task_id": 3,
+  "status": "completed",
+  "title": "Call mom"
+}
+```
+
+**Example Input**:
+```json
+{
+  "user_id": "ziakhan",
+  "task_id": 3
+}
+```
+
+**Example Output**:
+```json
+{
+  "task_id": 3,
+  "status": "completed",
+  "title": "Call mom"
+}
+```
+
+**Acceptance Criteria**:
+- ✅ Updates task completed field to True
+- ✅ Records updated_at timestamp
+- ✅ Verifies task belongs to user_id
+- ✅ Returns task_id, status="completed", and title
+- ✅ Idempotent (completing already completed task returns success)
+
+**Error Cases**:
+- Task not found → `{"error": "TASK_NOT_FOUND", "message": "Task not found"}`
+- Task belongs to different user → `{"error": "TASK_NOT_FOUND", "message": "Task not found"}` (security: don't reveal existence)
+
+---
+
+### Tool 4: delete_task
+
+**Purpose**: Permanently delete a task
+
+**Function Signature**:
+```python
+async def delete_task(
+    user_id: str,
+    task_id: int
+) -> dict
+```
+
+**Parameters**:
+- `user_id` (string, required): User identifier
+- `task_id` (integer, required): Task identifier to delete
+
+**Return Value**:
+```json
+{
+  "task_id": 2,
+  "status": "deleted",
+  "title": "Old task"
+}
+```
+
+**Example Input**:
+```json
+{
+  "user_id": "ziakhan",
+  "task_id": 2
+}
+```
+
+**Example Output**:
+```json
+{
+  "task_id": 2,
+  "status": "deleted",
+  "title": "Old task"
+}
+```
+
+**Acceptance Criteria**:
+- ✅ Permanently removes task from database
+- ✅ Verifies task belongs to user_id
+- ✅ Returns task_id, status="deleted", and title for confirmation
+- ✅ Idempotent (deleting non-existent task returns error)
+
+**Error Cases**:
+- Task not found → `{"error": "TASK_NOT_FOUND", "message": "Task not found"}`
+- Task belongs to different user → `{"error": "TASK_NOT_FOUND", "message": "Task not found"}` (security)
+
+---
+
+### Tool 5: update_task
+
+**Purpose**: Modify task title or description
+
+**Function Signature**:
+```python
+async def update_task(
+    user_id: str,
+    task_id: int,
+    title: Optional[str] = None,
+    description: Optional[str] = None
+) -> dict
+```
+
+**Parameters**:
+- `user_id` (string, required): User identifier
+- `task_id` (integer, required): Task identifier to update
+- `title` (string, optional): New task title
+- `description` (string, optional): New task description
+
+**Return Value**:
+```json
+{
+  "task_id": 1,
+  "status": "updated",
+  "title": "Buy groceries and fruits"
+}
+```
+
+**Example Input**:
+```json
+{
+  "user_id": "ziakhan",
+  "task_id": 1,
+  "title": "Buy groceries and fruits"
+}
+```
+
+**Example Output**:
+```json
+{
+  "task_id": 1,
+  "status": "updated",
+  "title": "Buy groceries and fruits"
+}
+```
+
+**Acceptance Criteria**:
+- ✅ Updates only provided fields (title and/or description)
+- ✅ Leaves other fields unchanged
+- ✅ Updates updated_at timestamp
+- ✅ Verifies task belongs to user_id
+- ✅ Returns task_id, status="updated", and updated title
+
+**Error Cases**:
+- Task not found → `{"error": "TASK_NOT_FOUND", "message": "Task not found"}`
+- No fields provided → `{"error": "NO_UPDATES", "message": "No fields to update"}`
+- Title too long → `{"error": "TITLE_TOO_LONG", "message": "Title must be 200 characters or less"}`
+
+---
+
+## 4. DATABASE MODELS
+
+### Task Model
+| Field | Type | Description |
+|-------|------|-------------|
+| user_id | string | User identifier (FK) |
+| id | integer | Task identifier (PK) |
+| title | string | Task title |
+| description | string | Task description (optional) |
+| completed | boolean | Completion status (default: false) |
+| created_at | timestamp | Creation timestamp |
+| updated_at | timestamp | Last update timestamp |
+
+**Indexes**:
+- Primary key on `id`
+- Index on `user_id` (MANDATORY for user isolation)
+- Index on `completed` for filtering
+
+---
+
+### Conversation Model
+| Field | Type | Description |
+|-------|------|-------------|
+| user_id | string | User identifier (FK) |
+| id | integer | Conversation identifier (PK) |
+| created_at | timestamp | Creation timestamp |
+| updated_at | timestamp | Last update timestamp |
+
+**Indexes**:
+- Primary key on `id`
+- Index on `user_id` (MANDATORY)
+
+---
+
+### Message Model
+| Field | Type | Description |
+|-------|------|-------------|
+| user_id | string | User identifier (FK) |
+| id | integer | Message identifier (PK) |
+| conversation_id | integer | Conversation reference (FK) |
+| role | string | Message role (user/assistant) |
+| content | text | Message content |
+| created_at | timestamp | Message timestamp |
+
+**Indexes**:
+- Primary key on `id`
+- Index on `conversation_id` (for conversation retrieval)
+- Index on `user_id` (MANDATORY)
+
+---
+
+## 5. AGENT BEHAVIOR SPECIFICATION
+
+The AI agent must understand natural language commands and map them to appropriate MCP tool calls:
+
+### Natural Language Command Mapping
+
+| User Says | Agent Should | MCP Tool |
+|-----------|-------------|----------|
+| "Add a task to buy groceries" | Extract title "Buy groceries" | `add_task` |
+| "Show me all my tasks" | List all tasks | `list_tasks` with status="all" |
+| "What's pending?" | List incomplete tasks | `list_tasks` with status="pending" |
+| "Mark task 3 as complete" | Complete task by ID | `complete_task` with task_id=3 |
+| "Delete the meeting task" | List tasks first to find ID, then delete | `list_tasks` then `delete_task` |
+| "Change task 1 to 'Call mom tonight'" | Update task title | `update_task` with new title |
+| "I need to remember to pay bills" | Create task from statement | `add_task` with title "Pay bills" |
+| "What have I completed?" | List completed tasks | `list_tasks` with status="completed" |
+
+### Agent Behavior Requirements
+
+**AC-AB1: Task Creation**
+- When user mentions adding/creating/remembering something, use `add_task`
+- Extract task title from natural language
+- Extract description if provided
+- Always confirm action with friendly response
+
+**AC-AB2: Task Listing**
+- When user asks to see/show/list tasks, use `list_tasks`
+- Determine appropriate status filter from context
+- Format results in readable manner
+- Handle empty lists gracefully
+
+**AC-AB3: Task Completion**
+- When user says done/complete/finished, use `complete_task`
+- Support both task ID and title references
+- If title used, may need to list tasks first to find ID
+- Always confirm completion
+
+**AC-AB4: Task Deletion**
+- When user says delete/remove/cancel, use `delete_task`
+- Support both task ID and title references
+- If title used, list tasks first to find correct ID
+- Confirm deletion with task details
+
+**AC-AB5: Task Update**
+- When user says change/update/rename, use `update_task`
+- Identify which field to update (title or description)
+- Support partial updates
+- Confirm changes made
+
+**AC-AB6: Confirmation**
+- Always confirm actions with friendly response
+- Include relevant task details in confirmation
+- Use natural, conversational language
+
+**AC-AB7: Error Handling**
+- Gracefully handle task not found errors
+- Provide helpful suggestions when operations fail
+- Never expose technical error details
+- Maintain conversational flow even on errors
+
+---
+
+## 6. CHAT API ENDPOINT
+
+### Endpoint Specification
+
+**Method**: `POST`  
+**Route**: `/api/{user_id}/chat`  
+**Description**: Send message and get AI response
+
+### Request Schema
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| conversation_id | integer | No | Existing conversation ID (creates new if not provided) |
+| message | string | Yes | User's natural language message |
+
+**Example Request**:
+```json
+{
+  "conversation_id": 123,
+  "message": "Add a task to buy groceries"
+}
+```
+
+### Response Schema
+
+| Field | Type | Description |
+|-------|------|-------------|
+| conversation_id | integer | The conversation ID |
+| response | string | AI assistant's response |
+| tool_calls | array | List of MCP tools invoked |
+
+**Example Response**:
+```json
+{
+  "conversation_id": 123,
+  "response": "I've added 'Buy groceries' to your task list.",
+  "tool_calls": [
+    {
+      "tool": "add_task",
+      "parameters": {
+        "user_id": "ziakhan",
+        "title": "Buy groceries"
+      },
+      "result": {
+        "task_id": 5,
+        "status": "created",
+        "title": "Buy groceries"
+      }
+    }
+  ]
+}
+```
+
+---
+
+## 7. ERROR HANDLING SPECIFICATIONS
+
+### 7.0 Standardized Error Response Format
+
+All error responses follow a consistent JSON structure for programmatic handling:
+
+```json
+{
+  "error_code": "string",      // Machine-readable error code (UPPERCASE_SNAKE_CASE)
+  "message": "string",         // User-friendly message (conversational tone)
+  "suggestion": "string"       // Actionable next step for the user
+}
+```
+
+**Error Codes Registry**:
+- `EMPTY_TASK_LIST` - No tasks found for user
+- `TASK_NOT_FOUND` - Specified task does not exist
+- `INVALID_TASK_ID` - Malformed task identifier
+- `MULTIPLE_MATCHES` - Ambiguous task reference
+- `DATABASE_UNAVAILABLE` - Database connection/timeout error
+- `OPENAI_API_FAILURE` - OpenAI service error
+- `INVALID_USER_ID` - Malformed or missing user_id
+- `SERVICE_UNAVAILABLE` - General service unavailability
+
+---
+
+### 7.1 Empty Task List
+
+**Scenario**: User requests tasks when none exist (NOT an error - normal state)
+
+**User Input**:
+```
+"Show my tasks"
+"What do I need to do?"
+"List my pending tasks"
+```
+
+**User-Facing Response**:
+```
+Assistant: "You don't have any tasks. You're all caught up!"
+```
+
+**API Response** (HTTP 200 OK):
+```json
+{
+  "conversation_id": 123,
+  "response": "You don't have any tasks. You're all caught up!",
+  "tool_calls": [
+    {
+      "tool": "list_tasks",
+      "result": {
+        "tasks": [],
+        "count": 0
+      }
+    }
+  ]
+}
+```
+
+**Acceptance Criteria**:
+- ✅ Positive, encouraging message
+- ✅ NOT treated as error (HTTP 200)
+- ✅ Empty array returned normally
+- ✅ No error_code in response
+
+**Variations by Status**:
+- Pending: "You don't have any pending tasks. You're all caught up!"
+- Completed: "You haven't completed any tasks yet."
+- All: "You don't have any tasks. You're all caught up!"
+
+---
+
+### 7.2 Invalid Task ID
+
+**Scenario**: User provides malformed task identifier
+
+**User Input**:
+```
+"Complete task abc"
+"Delete task -1"
+"Mark task xyz123 as done"
+```
+
+**User-Facing Response**:
+```
+Assistant: "I couldn't find task [ID]. Would you like to see your current tasks?"
+```
+
+**API Response** (HTTP 200 OK - conversational recovery):
+```json
+{
+  "error_code": "TASK_NOT_FOUND",
+  "message": "I couldn't find task abc. Would you like to see your current tasks?",
+  "suggestion": "Try 'show my tasks' to see available task numbers."
+}
+```
+
+**Acceptance Criteria**:
+- ✅ User-friendly message (no technical validation details)
+- ✅ Offers to list tasks as recovery
+- ✅ Suggests valid alternative action
+- ✅ Agent can continue conversation
+- ✅ Doesn't expose whether task exists for other users
+
+**Alternative Phrasing**:
+```
+"Which task would you like to [ACTION]? You can say the task number or title."
+"I didn't understand which task you're referring to. Could you describe the task or use the task number from your list?"
+```
+
+---
+
+### 7.3 Task Not Found (Valid ID Format)
+
+**Scenario**: User references non-existent task with valid ID format
+
+**User Input**:
+```
+"Complete task 999"
+"Delete task 42"
+```
+
+**User-Facing Response**:
+```
+Assistant: "I couldn't find task 999. Would you like to see your current tasks?"
+```
+
+**API Response** (HTTP 200 OK):
+```json
+{
+  "error_code": "TASK_NOT_FOUND",
+  "message": "I couldn't find task 999. Would you like to see your current tasks?",
+  "suggestion": "Use 'show my tasks' to see your available tasks."
+}
+```
+
+**Acceptance Criteria**:
+- ✅ User-friendly message (no technical jargon)
+- ✅ Offers helpful next step (list tasks)
+- ✅ Doesn't expose whether task exists for other users
+- ✅ Agent can recover and continue conversation
+
+---
+
+### 7.4 Multiple Matching Tasks (Ambiguous Reference)
+
+**Scenario**: Multiple tasks match user's description
+
+**User Input**:
+```
+"Complete the meeting task"
+(When there are "Team meeting" and "Client meeting" tasks)
+
+"Delete the report"
+(When there are "Q4 Report", "Review Report Draft" tasks)
+```
+
+**User-Facing Response**:
+```
+Assistant: "I found multiple tasks matching 'meeting':
+1. Team meeting (ID: 5)
+2. Client meeting (ID: 12)
+Which task would you like to complete? Please specify by number."
+```
+
+**API Response** (HTTP 200 OK - clarification request):
+```json
+{
+  "error_code": "MULTIPLE_MATCHES",
+  "message": "I found multiple tasks matching 'meeting':\n1. Team meeting (ID: 5)\n2. Client meeting (ID: 12)\nWhich task would you like to complete? Please specify by number.",
+  "suggestion": "Reply with the task number (e.g., 'task 5') or position (e.g., 'the first one').",
+  "matches": [
+    {"id": 5, "title": "Team meeting"},
+    {"id": 12, "title": "Client meeting"}
+  ]
+}
+```
+
+**Acceptance Criteria**:
+- ✅ Lists all matching tasks with IDs
+- ✅ Asks for clarification
+- ✅ Provides task numbers for easy reference
+- ✅ Suggests how to respond (by number or position)
+- ✅ Includes structured matches for UI rendering
+
+**Follow-up Handling**:
+```
+User: "The first one"
+Assistant: "Great job! I've marked 'Team meeting' as complete."
+
+User: "Task 5"
+Assistant: "Great job! I've marked 'Team meeting' as complete."
+```
+
+---
+
+### 7.5 OpenAI API Failure
+
+**Scenario**: OpenAI service unavailable, rate limited, or timeout
+
+**Trigger Conditions**:
+- HTTP 429 (Rate Limit)
+- HTTP 500/502/503/504 (Server Errors)
+- Connection timeout
+- API key invalid/expired
+
+**User-Facing Response**:
+```
+Assistant: "I'm experiencing high demand right now. Please try your request again in a moment."
+```
+
+**API Response** (HTTP 503 Service Unavailable):
+```json
+{
+  "error_code": "OPENAI_API_FAILURE",
+  "message": "I'm experiencing high demand right now. Please try your request again in a moment.",
+  "suggestion": "Wait 10-30 seconds and retry your request.",
+  "retry_after": 30
+}
+```
+
+**Acceptance Criteria**:
+- ✅ Doesn't reveal AI service provider details
+- ✅ User-friendly, non-technical explanation
+- ✅ Suggests specific retry timing
+- ✅ Logs full error server-side with stack trace
+- ✅ Returns HTTP 503 status code
+- ✅ Includes retry_after header
+- ✅ Monitored/alerted for operations team
+
+**Server-Side Logging**:
+```json
+{
+  "level": "ERROR",
+  "timestamp": "2026-01-03T10:30:45Z",
+  "error_type": "OpenAI API Failure",
+  "status_code": 429,
+  "openai_error": "Rate limit exceeded",
+  "user_id": "user_123",
+  "request_id": "req_abc789",
+  "retry_count": 0
+}
+```
+
+---
+
+### 7.6 Database Unavailable
+
+**Scenario**: Database connection failure, timeout, or unavailability
+
+**Trigger Conditions**:
+- Connection pool exhausted
+- Network timeout
+- Database server down
+- Query timeout (>5 seconds)
+- Authentication failure
+
+**User-Facing Response**:
+```
+Assistant: "I'm having trouble accessing your tasks right now. This is a temporary issue - please try again in a moment."
+```
+
+**API Response** (HTTP 503 Service Unavailable):
+```json
+{
+  "error_code": "DATABASE_UNAVAILABLE",
+  "message": "I'm having trouble accessing your tasks right now. This is a temporary issue - please try again in a moment.",
+  "suggestion": "Wait 30-60 seconds and retry. If the issue persists, contact support.",
+  "retry_after": 60,
+  "support_id": "err_db_20260103_103045"
+}
+```
+
+**Acceptance Criteria**:
+- ✅ User-friendly message
+- ✅ Explicitly states "temporary issue"
+- ✅ Suggests retry timing (30-60 seconds)
+- ✅ Provides support ID for debugging
+- ✅ Logs full error server-side
+- ✅ Returns HTTP 503 status code
+- ✅ Triggers monitoring alert
+- ✅ Includes retry_after in seconds
+
+**Server-Side Logging**:
+```json
+{
+  "level": "CRITICAL",
+  "timestamp": "2026-01-03T10:30:45Z",
+  "error_type": "Database Connection Failure",
+  "database": "neon_postgres",
+  "error_message": "Connection timeout after 5000ms",
+  "connection_pool_status": "exhausted",
+  "user_id": "user_123",
+  "support_id": "err_db_20260103_103045",
+  "stack_trace": "..."
+}
+```
+
+**Recovery Strategy**:
+- Automatic retry with exponential backoff (3 attempts)
+- Connection pool refresh
+- Failover to read replica (if available)
+- Circuit breaker pattern to prevent cascade failures
+
+---
+
+### 7.7 Invalid User ID
+
+**Scenario**: Malformed or missing user_id in request
+
+**Trigger Conditions**:
+- Missing user_id in path parameter
+- Empty string user_id
+- Special characters in user_id
+- SQL injection attempt patterns
+
+**User-Facing Response**:
+```
+{
+  "error_code": "INVALID_USER_ID",
+  "message": "Invalid user identifier provided.",
+  "suggestion": "Please log in again to verify your session."
+}
+```
+
+**API Response** (HTTP 400 Bad Request):
+```json
+{
+  "error_code": "INVALID_USER_ID",
+  "message": "Invalid user identifier provided.",
+  "suggestion": "Please log in again to verify your session.",
+  "validation_errors": ["user_id must be a non-empty string"]
+}
+```
+
+**Acceptance Criteria**:
+- ✅ Request rejected at API layer (before business logic)
+- ✅ Returns HTTP 400 Bad Request
+- ✅ Doesn't expose validation internals
+- ✅ Logged as potential security issue
+- ✅ Rate-limited by IP to prevent abuse
+- ✅ Never creates database query with invalid ID
+
+**Server-Side Logging** (Security Event):
+```json
+{
+  "level": "WARNING",
+  "timestamp": "2026-01-03T10:30:45Z",
+  "event_type": "Invalid User ID Attempt",
+  "user_id_attempted": "'; DROP TABLE tasks; --",
+  "ip_address": "192.168.1.100",
+  "user_agent": "...",
+  "endpoint": "/api/{user_id}/chat",
+  "security_flag": "POSSIBLE_SQL_INJECTION"
+}
+```
+
+---
+
+### 7.8 Error Response Priority
+
+When multiple errors could apply, use this priority order:
+
+1. **INVALID_USER_ID** (400) - Security first
+2. **DATABASE_UNAVAILABLE** (503) - Infrastructure issues
+3. **OPENAI_API_FAILURE** (503) - External dependencies
+4. **MULTIPLE_MATCHES** (200) - Needs user clarification
+5. **TASK_NOT_FOUND** (200) - Recoverable conversation error
+6. **INVALID_TASK_ID** (200) - User input issue
+
+---
+
+### 7.9 Error Handling Best Practices
+
+**DO**:
+- ✅ Use conversational, friendly language
+- ✅ Offer specific, actionable suggestions
+- ✅ Log full error details server-side
+- ✅ Include support IDs for debugging
+- ✅ Return appropriate HTTP status codes
+- ✅ Enable graceful conversation recovery
+- ✅ Monitor error rates and alert on spikes
+
+**DON'T**:
+- ❌ Expose technical stack traces to users
+- ❌ Reveal database schema or internal structure
+- ❌ Use technical jargon ("QueryException", "NullPointerError")
+- ❌ Blame the user ("You entered invalid data")
+- ❌ Return HTML error pages for API endpoints
+- ❌ Expose AI provider details to end users
+- ❌ Include sensitive information in error messages
+
+---
+
+## 8. CONVERSATION QUALITY SPECIFICATIONS
+
+### 8.1 Natural Language Understanding
+
+**Acceptance Criteria**:
+- ✅ Handles variations in phrasing (see journey examples)
+- ✅ Extracts task details from natural descriptions
+- ✅ Understands context from conversation history
+- ✅ Recognizes implicit references ("it", "that task", "the first one")
+
+**Examples**:
+```
+"Add it to my list" → Adds task from context
+"Make that high priority" → Updates recent task
+"I finished that" → Completes recently mentioned task
+```
+
+---
+
+### 8.2 Response Quality
+
+**Acceptance Criteria**:
+- ✅ Responses are concise and clear
+- ✅ Confirmations include relevant details
+- ✅ Tone is friendly and helpful
+- ✅ Uses proper formatting for lists
+- ✅ Avoids technical jargon
+
+**Good Response Examples**:
+```
+✅ "I've added 'Buy groceries' to your task list."
+✅ "You have 3 pending tasks: [list]"
+✅ "Task completed! Well done."
+
+❌ "Task creation successful. Task ID: 12345. Status: pending."
+❌ "Query executed. Result set contains 3 rows."
+```
+
+---
+
+### 8.3 Context Awareness
+
+**Acceptance Criteria**:
+- ✅ Remembers tasks mentioned in conversation
+- ✅ Can reference "the task I just added"
+- ✅ Understands follow-up questions
+- ✅ Maintains conversation coherence
+
+**Example Conversation**:
+```
+User: "Add a task to call the dentist"
+Assistant: "I've added 'Call the dentist' to your task list."
+
+User: "Make it high priority"
+Assistant: "I've set 'Call the dentist' to high priority."
+
+User: "Actually, I just did that"
+Assistant: "Great! I've marked 'Call the dentist' as completed."
+```
+
+---
+
+## 9. PERFORMANCE SPECIFICATIONS
+
+### 9.1 Response Time
+
+**Requirements**:
+- Average response time: < 2 seconds
+- 95th percentile: < 3 seconds
+- Maximum timeout: 10 seconds
+
+**Measurement Points**:
+- Request received → Response sent
+- Includes: DB query + OpenAI API + DB write
+
+---
+
+### 9.2 Throughput
+
+**Requirements**:
+- Support 100 concurrent users
+- Handle 1000 requests/minute
+- Graceful degradation under load
+
+---
+
+### 9.3 Database Performance
+
+**Requirements**:
+- Task queries: < 100ms
+- Message queries: < 150ms
+- Write operations: < 200ms
+- Use connection pooling
+
+**Optimization**:
+- Indexes on user_id, conversation_id
+- Limit conversation history to last 50 messages
+- Pagination for large task lists
+
+---
+
+## 10. SECURITY SPECIFICATIONS
+
+### 10.1 User Isolation
+
+**Requirements**:
+- ✅ All database queries MUST include user_id filter
+- ✅ Cross-user access attempts return 403 Forbidden
+- ✅ Don't reveal task existence for other users
+- ✅ Conversation IDs are UUIDs (not sequential)
+
+**SQL Query Pattern**:
+```sql
+-- CORRECT: Always filter by user_id
+SELECT * FROM tasks WHERE user_id = $1 AND id = $2;
+
+-- WRONG: Missing user_id filter
+SELECT * FROM tasks WHERE id = $1;
+```
+
+---
+
+### 10.2 Input Validation
+
+**Requirements**:
+- ✅ Sanitize all user inputs
+- ✅ Validate user_id format
+- ✅ Validate conversation_id format (UUID)
+- ✅ Limit message length (max 2000 chars)
+- ✅ Validate task field lengths
+- ✅ SQL injection prevention (SQLModel provides this)
+
+---
+
+### 10.3 Error Information Disclosure
+
+**Requirements**:
+- ✅ Never expose stack traces to users
+- ✅ Don't reveal database structure
+- ✅ Don't confirm existence of other users' data
+- ✅ Generic messages for security errors
+
+---
+
+## 11. TESTING SPECIFICATIONS
+
+### 11.1 Unit Tests
+
+**MCP Tools**:
+- Test each tool with valid inputs
+- Test error cases (invalid IDs, missing fields)
+- Test user isolation
+- Test database transactions
+
+**Database**:
+- Test all CRUD operations
+- Test user_id filtering
+- Test conversation persistence
+
+---
+
+### 11.2 Integration Tests
+
+**Conversation Flow**:
+- Test new conversation creation
+- Test conversation resume
+- Test multi-turn conversations
+- Test stateless behavior
+
+**End-to-End**:
+- Full user journeys (add → list → complete → delete)
+- Error recovery scenarios
+- Concurrent user scenarios
+
+---
+
+### 11.3 Load Tests
+
+**Scenarios**:
+- 100 concurrent users
+- 1000 requests/minute sustained
+- Database connection pool limits
+- Memory usage under load
+
+---
+
+## 12. DEPLOYMENT SPECIFICATIONS
+
+### 12.1 Environment Variables
+
+**Backend**:
+```
+OPENAI_API_KEY=sk-...
+DATABASE_URL=postgresql://...
+MCP_SERVER_PORT=8000
+ENVIRONMENT=production
+LOG_LEVEL=INFO
+```
+
+**Frontend (ChatKit)**:
+```
+NEXT_PUBLIC_OPENAI_DOMAIN_KEY=your-domain-key-here
+```
+
+### 12.2 OpenAI ChatKit Setup & Deployment
+
+**Domain Allowlist Configuration (REQUIRED)**:
+
+Before deploying your chatbot frontend, you MUST configure OpenAI's domain allowlist:
+
+1. **Deploy frontend first** to get a production URL:
+   - Vercel: `https://your-app.vercel.app`
+   - GitHub Pages: `https://username.github.io/repo-name`
+   - Custom domain: `https://yourdomain.com`
+
+2. **Add domain to OpenAI's allowlist**:
+   - Navigate to: https://platform.openai.com/settings/organization/security/domain-allowlist
+   - Click "Add domain"
+   - Enter your frontend URL (without trailing slash)
+   - Save changes
+
+3. **Get ChatKit domain key**:
+   - After adding the domain, OpenAI will provide a domain key
+   - Pass this key to your ChatKit configuration
+   - Set environment variable: `NEXT_PUBLIC_OPENAI_DOMAIN_KEY`
+
+**Important Notes**:
+- The hosted ChatKit option ONLY works after adding correct domains under Security → Domain Allowlist
+- Local development (`localhost`) typically works without this configuration
+- Domain key is required in production environment
+
+### 12.3 Database Migration
+
+**Process**:
+1. Create migrations with Alembic
+2. Test migrations on staging
+3. Apply to production with rollback plan
+4. Verify data integrity
+
+### 12.4 Monitoring
+
+**Metrics**:
+- Request latency (p50, p95, p99)
+- Error rates by type
+- Database query performance
+- OpenAI API usage and costs
+- Active conversations count
+
+---
+
+## 13. ACCEPTANCE CRITERIA SUMMARY
+
+### Must Have (MVP)
+- ✅ All 5 user journeys functional
+- ✅ All 5 MCP tools implemented and tested
+- ✅ Stateless request cycle verified
+- ✅ Conversation persistence working
+- ✅ User isolation enforced
+- ✅ Error handling graceful
+- ✅ Single chat endpoint operational
+- ✅ Database schema deployed
+- ✅ Response time < 3s (95th percentile)
+
+### Should Have
+- ✅ Advanced NLP (understand context, pronouns)
+- ✅ Task search by keywords
+- ✅ Bulk operations (complete multiple tasks)
+- ✅ Task statistics ("how many tasks completed this week?")
+- ✅ Due date handling
+
+### Nice to Have
+- ⭕ Task categories/tags
+- ⭕ Recurring tasks
+- ⭕ Task dependencies
+- ⭕ Export task history
+- ⭕ Voice interface
+
+---
+
+## 14. DELIVERABLES
+
+### Required Deliverables
+
+**GitHub Repository Structure**:
+```
+/frontend – ChatKit-based UI
+/backend – FastAPI + Agents SDK + MCP
+/specs – Specification files (constitution, specify, plan, tasks)
+/database – Migration scripts
+README.md – Setup instructions
+```
+
+**Working Chatbot Capabilities**:
+- ✅ Manage tasks through natural language via MCP tools
+- ✅ Maintain conversation context via database (stateless server)
+- ✅ Provide helpful responses with action confirmations
+- ✅ Handle errors gracefully
+- ✅ Resume conversations after server restart
+
+**Documentation**:
+- Complete setup instructions in README
+- API documentation
+- MCP tool specifications
+- Database schema documentation
+- Deployment guide (including ChatKit domain setup)
+
+---
+
+## 15. KEY ARCHITECTURE BENEFITS
+
+### MCP Tools Architecture
+| Aspect | Benefit |
+|--------|---------|
+| MCP Tools | Standardized interface for AI to interact with your app |
+| Single Endpoint | Simpler API — AI handles routing to tools |
+| Stateless Server | Scalable, resilient, horizontally scalable |
+| Tool Composition | Agent can chain multiple tools in one turn |
+
+### Stateless Architecture Benefits
+- **Scalability**: Any server instance can handle any request
+- **Resilience**: Server restarts don't lose conversation state
+- **Horizontal scaling**: Load balancer can route to any backend
+- **Testability**: Each request is independent and reproducible
+
+---
+
+## APPENDIX A: Sample Conversations
+
+### Complete User Journey
+```
+User: "Hi, I need help managing my tasks"
+Assistant: "Hello! I'd be happy to help you manage your tasks. You can ask me to add tasks, view your task list, complete tasks, or update them. What would you like to do first?"
+
+User: "Add a task to prepare presentation for Monday"
+Assistant: "I've added 'Prepare presentation for Monday' to your task list."
+
+User: "Also add call the client about contract"
+Assistant: "I've added 'Call the client about contract' to your task list."
+
+User: "Make the presentation task high priority"
+Assistant: "I've set 'Prepare presentation for Monday' to high priority."
+
+User: "What do I need to do?"
+Assistant: "You have 2 pending tasks:
+1. Prepare presentation for Monday (High Priority)
+2. Call the client about contract (Medium Priority)"
+
+User: "I called the client"
+Assistant: "Great! I've marked 'Call the client about contract' as completed."
+
+User: "Show completed tasks"
+Assistant: "You've completed 1 task:
+1. Call the client about contract (Completed just now)"
+```
+
+---
+
+## DOCUMENT CONTROL
+
+**Approval Required From**:
+- [ ] Technical Lead
+- [ ] Product Owner
+- [ ] Constitution Review Board
+
+**Version History**:
+- v1.0.0 (2026-01-03): Initial specification
+
+**Next Steps**:
+1. Review against constitution
+2. Break down into tasks (speckit.tasks)
+3. Create implementation plan (speckit.plan)
+4. Begin code generation
+
+---
+
+*This specification is binding and must be followed exactly during implementation. Any deviations require formal change request process.*

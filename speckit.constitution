@@ -1,0 +1,292 @@
+# SpecKit Constitution: Phase III AI Todo Chatbot
+
+## Project Identity
+- **Name**: AI-Powered Todo Chatbot (Phase III)
+- **Version**: 1.0.0
+- **Type**: Conversational AI Task Management System
+- **Architecture**: Stateless Backend with Persistent Conversation State
+
+## Core Principles
+
+### 1. Spec-Driven Development (MANDATORY)
+- **NO MANUAL CODING**: All code must be generated from specifications
+- **Specification First**: Every feature must have a complete specification before implementation
+- **No Deviation**: Implementation must strictly follow specifications without improvisation
+- **Traceability**: Every code artifact must trace back to a specification requirement
+- **Review Gate**: Specifications must be reviewed and approved before code generation
+
+### 2. Stateless Architecture (CRITICAL)
+- **Zero In-Memory State**: Backend must NEVER store conversation or user state in memory
+- **Database as Truth**: All state must be persisted in the database immediately
+- **No Session Storage**: No server-side session management or caching
+- **Horizontal Scalability**: System must support multiple backend instances without shared memory
+- **Restart Resilient**: Application restarts must not lose any user data or conversation context
+
+### 3. Conversation State Management
+- **Full Persistence**: Every message, context, and conversation turn must be stored in database
+- **Conversation History**: All user messages and assistant responses persisted
+- **Context Retrieval**: Current conversation context loaded from database on each request
+- **Thread Continuity**: Users can resume conversations across sessions seamlessly
+- **No Memory Leaks**: No conversation data left in application memory after request completion
+
+### 4. MCP Tool Design (STATELESS)
+- **Pure Functions**: All MCP tools must be stateless pure functions
+- **Database Operations**: Tools read/write state exclusively through database
+- **No Global State**: No shared variables, caches, or session data between tool calls
+- **Idempotent**: Tools should produce same result for same inputs (where applicable)
+- **Isolated**: Each tool execution is independent and self-contained
+
+## Technology Stack (NON-NEGOTIABLE)
+
+### Frontend
+- **OpenAI ChatKit**: REQUIRED for conversational UI
+- **Domain Allowlist**: Must configure OpenAI domain allowlist for production deployment
+- **Domain Key**: Required environment variable NEXT_PUBLIC_OPENAI_DOMAIN_KEY
+- **No Alternatives**: Custom chat UIs are PROHIBITED for Phase III
+
+### Backend Framework
+- **FastAPI**: ONLY FastAPI for REST API development
+- **Version**: FastAPI 0.100.0 or higher
+- **ASGI Server**: Uvicorn for production deployment
+- **No Alternatives**: Flask, Django, or other frameworks are PROHIBITED
+
+### AI & Agents
+- **OpenAI Agents SDK**: REQUIRED for agent orchestration and logic
+- **Official MCP SDK**: REQUIRED for Model Context Protocol implementation
+- **No Custom Implementations**: Must use official SDKs, no homegrown alternatives
+- **Integration**: OpenAI Agents must integrate with MCP tools seamlessly
+- **Agent Runner**: Use OpenAI Agent + Runner pattern for execution
+
+### Database
+- **SQLModel**: ONLY SQLModel for ORM and data modeling
+- **Neon DB**: ONLY Neon Serverless PostgreSQL for database hosting
+- **No Alternatives**: SQLAlchemy alone, other ORMs, or databases are PROHIBITED
+- **Connection Pooling**: Must use connection pooling for efficiency
+- **Migration Strategy**: Alembic for database migrations
+
+### Authentication
+- **Better Auth**: REQUIRED for user authentication and authorization
+- **Integration**: Must integrate with FastAPI backend
+- **Session Management**: Handle authentication tokens and user sessions
+
+### MCP Implementation
+- **Official SDK**: Use official Model Context Protocol SDK from Anthropic
+- **Tool Registration**: All task operations exposed as MCP tools
+- **Stateless Tools**: Every tool must query/update database directly
+- **Error Handling**: Tools must return structured errors for AI to interpret
+
+## API Design
+
+### Single Chat Endpoint
+- **Route**: `POST /api/{user_id}/chat`
+- **Purpose**: Handle all conversational interactions
+- **Input**: User message + optional conversation_id
+- **Output**: Assistant response + conversation metadata
+- **State Management**: Load conversation from DB, process, save updated state
+- **No Other Endpoints**: All functionality routed through this single endpoint
+
+### Request Structure
+```json
+{
+  "message": "string (required)",
+  "conversation_id": "integer (optional, creates new if not provided)"
+}
+```
+
+### Response Structure
+```json
+{
+  "conversation_id": "integer (for future requests)",
+  "response": "string (assistant message)",
+  "tool_calls": "array (list of MCP tools invoked)"
+}
+```
+
+## Security Requirements (CRITICAL)
+
+### User Isolation (MANDATORY)
+- **user_id Parameter**: Every request must include user_id in path
+- **Data Isolation**: Users can ONLY access their own tasks and conversations
+- **Query Filtering**: All database queries MUST filter by user_id
+- **No Cross-User Access**: Attempting to access other users' data must return 403 Forbidden
+- **Validation**: user_id must be validated on every request
+
+### Security Measures
+- **Input Sanitization**: All user inputs must be sanitized
+- **SQL Injection Prevention**: Use parameterized queries (SQLModel provides this)
+- **Rate Limiting**: Implement rate limiting per user_id
+- **Authentication**: Ready for JWT/OAuth integration (Phase IV)
+- **CORS**: Properly configured CORS for frontend integration
+
+## Error Handling
+
+### Graceful Degradation
+- **User-Friendly Messages**: Never expose technical errors to users
+- **Contextual Errors**: Error messages must relate to user's action
+- **Recovery Suggestions**: Provide actionable guidance when errors occur
+- **Logging**: All errors logged with context for debugging
+- **No Stack Traces**: Never send stack traces to frontend
+
+### Error Categories
+1. **User Errors**: Invalid input, malformed requests → 400 with helpful message
+2. **Not Found**: Missing tasks/conversations → 404 with context
+3. **Permission Errors**: Cross-user access attempts → 403 Forbidden
+4. **AI Errors**: LLM failures → Graceful fallback message
+5. **Database Errors**: Connection issues → 503 with retry suggestion
+6. **Server Errors**: Unexpected failures → 500 with generic message + ticket ID
+
+### Error Response Format
+```json
+{
+  "error": "user_friendly_message",
+  "error_code": "SPECIFIC_ERROR_CODE",
+  "suggestion": "what_user_can_do",
+  "support_id": "unique_id_for_support"
+}
+```
+
+## Database Schema Requirements
+
+### Conversation Table
+- conversation_id (PK)
+- user_id (FK, indexed)
+- created_at
+- updated_at
+- status (active/archived)
+
+### Message Table
+- message_id (PK)
+- conversation_id (FK)
+- user_id (FK, indexed)
+- role (user/assistant)
+- content
+- timestamp
+- metadata (JSONB)
+
+### Task Table (from Phase II)
+- task_id (PK)
+- user_id (FK, indexed)
+- title
+- description
+- status
+- priority
+- created_at
+- updated_at
+- completed_at
+
+### Indexes
+- user_id on all tables (MANDATORY)
+- conversation_id on messages
+- created_at for time-based queries
+
+## MCP Tool Specifications
+
+### Required Tools (Stateless)
+All tools must follow the EXACT specifications from official requirements:
+
+1. **add_task**: Create new task in database
+   - Parameters: user_id (string, required), title (string, required), description (string, optional)
+   - Returns: task_id, status, title
+
+2. **list_tasks**: Query tasks from database with filters
+   - Parameters: user_id (string, required), status (string, optional: "all", "pending", "completed")
+   - Returns: Array of task objects with id, title, completed status
+
+3. **complete_task**: Mark task as complete
+   - Parameters: user_id (string, required), task_id (integer, required)
+   - Returns: task_id, status, title
+
+4. **delete_task**: Remove task from database
+   - Parameters: user_id (string, required), task_id (integer, required)
+   - Returns: task_id, status, title
+
+5. **update_task**: Modify task title or description
+   - Parameters: user_id (string, required), task_id (integer, required), title (string, optional), description (string, optional)
+   - Returns: task_id, status, title
+
+### Tool Design Pattern
+```python
+# Every tool must:
+# 1. Accept user_id as parameter
+# 2. Query/update database directly
+# 3. Return structured data
+# 4. Handle errors gracefully
+# 5. Log operations
+
+async def mcp_tool(user_id: str, params: dict) -> dict:
+    # Validate user_id
+    # Query/Update database
+    # Return result
+    # No state stored in memory
+```
+
+## Development Workflow
+
+### Phase Sequence
+1. **Specification**: Write complete spec in speckit.specify
+2. **Review**: Validate spec against constitution
+3. **Task Breakdown**: Create tasks in speckit.tasks
+4. **Code Generation**: Generate code from spec (AI-assisted)
+5. **Validation**: Verify code matches spec exactly
+6. **Testing**: Test against spec requirements
+7. **Documentation**: Auto-generate from spec
+
+### Quality Gates
+- ✅ Spec must pass constitutional review
+- ✅ Code must trace to spec requirement
+- ✅ All MCP tools must be stateless
+- ✅ Database persistence verified
+- ✅ User isolation tested
+- ✅ Error handling validated
+- ✅ No manual code additions
+
+## Prohibited Practices
+
+### NEVER ALLOWED
+- ❌ Manual coding without specification
+- ❌ Storing state in memory/sessions
+- ❌ Using frameworks other than FastAPI
+- ❌ Using databases other than Neon PostgreSQL
+- ❌ Implementing custom MCP SDK
+- ❌ Skipping user_id validation
+- ❌ Exposing technical errors to users
+- ❌ Global variables or singletons for state
+- ❌ Bypassing database for performance
+- ❌ Multiple chat endpoints
+
+### Code Review Checklist
+- [ ] Code generated from approved specification?
+- [ ] No in-memory state storage?
+- [ ] All state persisted to database?
+- [ ] MCP tools are stateless?
+- [ ] user_id isolation enforced?
+- [ ] Error handling is user-friendly?
+- [ ] Only approved tech stack used?
+- [ ] Single chat endpoint pattern followed?
+
+## Success Criteria
+
+### Technical
+- ✅ 100% stateless backend operation
+- ✅ All conversation state in database
+- ✅ MCP tools fully functional and stateless
+- ✅ Zero data leakage between users
+- ✅ Graceful error handling
+- ✅ Scalable architecture (multiple instances)
+
+### User Experience
+- ✅ Natural conversational interface
+- ✅ Reliable conversation continuity
+- ✅ Fast response times (<2s)
+- ✅ Clear, helpful error messages
+- ✅ Accurate task management
+- ✅ Seamless session resume
+
+## Compliance
+
+This constitution is **BINDING** for all development activities in Phase III.
+Any deviation requires formal amendment process and architectural review.
+
+**Last Updated**: January 3, 2026
+**Status**: Active
+**Governance**: All team members must acknowledge and follow

@@ -1,0 +1,2289 @@
+# SpecKit Tasks: Phase III AI Todo Chatbot
+
+## Document Information
+- **Project**: AI-Powered Todo Chatbot (Phase III)
+- **Version**: 1.0.0
+- **Date**: January 3, 2026
+- **Status**: Active
+- **Based On**: speckit.plan v1.0.0, speckit.specify v1.0.0
+- **Constitution**: speckit.constitution v1.0.0
+
+---
+
+## Task Breakdown Overview
+
+**Total Tasks**: 45
+**Estimated Duration**: 2 weeks
+**Critical Path**: Database → MCP Tools → Agent → Chat API → Frontend
+
+---
+
+## PHASE 1: DATABASE FOUNDATION (8 Tasks)
+
+### Task 1.1: Set Up Neon PostgreSQL Database
+
+**Task ID**: `DB-001`  
+**Priority**: CRITICAL  
+**Estimated Time**: 2 hours
+
+**Description**:
+Create and configure Neon Serverless PostgreSQL database for Phase III.
+
+**Preconditions**:
+- Neon account created
+- Database credentials available
+
+**Expected Output**:
+- ✅ Neon database created and accessible
+- ✅ Connection URL obtained
+- ✅ Database accessible from local development
+- ✅ Connection pooling configured
+
+**Files to Create**:
+- `backend/.env.example` - Environment variable template
+- `backend/.env` - Local environment variables (gitignored)
+- `backend/app/config.py` - Configuration management
+
+**Acceptance Criteria**:
+- Database connection string format: `postgresql://user:pass@host/db`
+- Connection test succeeds from local machine
+- SSL enabled for secure connection
+
+**Mapping**:
+- **Specify**: Section 12.1 (Environment Variables)
+- **Plan**: Section 8, Phase 1, Day 1
+
+---
+
+### Task 1.2: Create SQLModel Base Configuration
+
+**Task ID**: `DB-002`  
+**Priority**: CRITICAL  
+**Estimated Time**: 1 hour
+
+**Description**:
+Set up SQLModel ORM foundation with database connection and session management.
+
+**Preconditions**:
+- Task DB-001 completed
+- Neon database accessible
+
+**Expected Output**:
+- ✅ SQLModel configured
+- ✅ Database engine created
+- ✅ Session factory implemented
+- ✅ Dependency injection for database sessions
+
+**Files to Create**:
+- `backend/app/database.py` - Database configuration and session management
+- `backend/app/models/__init__.py` - Models package initialization
+
+**Code Requirements**:
+```python
+# database.py must include:
+- create_engine() with connection pooling
+- SessionLocal factory
+- get_db() dependency for FastAPI
+- init_db() for table creation
+```
+
+**Acceptance Criteria**:
+- Connection pooling enabled (min=5, max=20)
+- Sessions properly managed (auto-close after request)
+- Connection retry logic implemented
+
+**Mapping**:
+- **Specify**: Section 3 (Database Models)
+- **Plan**: Section 8, Phase 1, Day 1
+
+---
+
+### Task 1.3: Create Task Model
+
+**Task ID**: `DB-003`  
+**Priority**: CRITICAL  
+**Estimated Time**: 1 hour
+
+**Description**:
+Implement Task SQLModel schema matching Phase III specifications.
+
+**Preconditions**:
+- Task DB-002 completed
+
+**Expected Output**:
+- ✅ Task model defined with all required fields
+- ✅ Indexes on user_id and completed
+- ✅ Proper field validation
+- ✅ Timestamps auto-populated
+
+**Files to Create**:
+- `backend/app/models/task.py` - Task model definition
+
+**Model Requirements**:
+```python
+class Task(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: str = Field(index=True, nullable=False)
+    title: str = Field(max_length=200, nullable=False)
+    description: Optional[str] = Field(default="", max_length=1000)
+    completed: bool = Field(default=False, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+```
+
+**Acceptance Criteria**:
+- All fields match official requirements exactly
+- Indexes created on user_id and completed
+- Validation prevents empty titles
+- Timestamps auto-update on modification
+
+**Mapping**:
+- **Specify**: Section 4.1 (Database Models - Task)
+- **Plan**: Section 3.1 (Task Model)
+
+---
+
+### Task 1.4: Create Conversation Model
+
+**Task ID**: `DB-004`  
+**Priority**: CRITICAL  
+**Estimated Time**: 1 hour
+
+**Description**:
+Implement Conversation SQLModel schema for chat session tracking.
+
+**Preconditions**:
+- Task DB-002 completed
+
+**Expected Output**:
+- ✅ Conversation model defined
+- ✅ Index on user_id
+- ✅ Timestamps for creation and updates
+- ✅ Integer primary key
+
+**Files to Create**:
+- `backend/app/models/conversation.py` - Conversation model definition
+
+**Model Requirements**:
+```python
+class Conversation(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: str = Field(index=True, nullable=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+```
+
+**Acceptance Criteria**:
+- Integer ID for conversation_id (as per API spec)
+- user_id indexed for fast lookup
+- created_at and updated_at timestamps
+- No foreign keys to tasks (decoupled design)
+
+**Mapping**:
+- **Specify**: Section 4.2 (Database Models - Conversation)
+- **Plan**: Section 3.2 (Conversation Model)
+
+---
+
+### Task 1.5: Create Message Model
+
+**Task ID**: `DB-005`  
+**Priority**: CRITICAL  
+**Estimated Time**: 1 hour
+
+**Description**:
+Implement Message SQLModel schema for conversation history storage.
+
+**Preconditions**:
+- Task DB-004 completed
+
+**Expected Output**:
+- ✅ Message model defined
+- ✅ Foreign key to conversations
+- ✅ Indexes on conversation_id and user_id
+- ✅ Role field with user/assistant constraint
+- ✅ Content field for message text
+
+**Files to Create**:
+- `backend/app/models/message.py` - Message model definition
+
+**Model Requirements**:
+```python
+class Message(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    conversation_id: int = Field(foreign_key="conversations.id", index=True)
+    user_id: str = Field(index=True, nullable=False)
+    role: Literal["user", "assistant"] = Field(nullable=False)
+    content: str = Field(nullable=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+```
+
+**Acceptance Criteria**:
+- conversation_id references conversations.id
+- role limited to "user" or "assistant"
+- Indexed for fast chronological retrieval
+- user_id indexed for security filtering
+
+**Mapping**:
+- **Specify**: Section 4.3 (Database Models - Message)
+- **Plan**: Section 3.3 (Message Model)
+
+---
+
+### Task 1.6: Create Alembic Migration Configuration
+
+**Task ID**: `DB-006`  
+**Priority**: HIGH  
+**Estimated Time**: 1 hour
+
+**Description**:
+Set up Alembic for database migrations management.
+
+**Preconditions**:
+- Tasks DB-003, DB-004, DB-005 completed
+
+**Expected Output**:
+- ✅ Alembic initialized
+- ✅ Migration environment configured
+- ✅ alembic.ini configured for Neon DB
+- ✅ Initial migration created
+
+**Files to Create**:
+- `backend/alembic.ini` - Alembic configuration
+- `backend/alembic/env.py` - Migration environment
+- `backend/alembic/versions/` - Migrations directory
+
+**Commands to Execute**:
+```bash
+cd backend
+alembic init alembic
+alembic revision --autogenerate -m "Create initial tables"
+```
+
+**Acceptance Criteria**:
+- Alembic configured to use Neon DATABASE_URL
+- Auto-detection of SQLModel models working
+- Migration script generated correctly
+
+**Mapping**:
+- **Specify**: Section 12.3 (Database Migration)
+- **Plan**: Section 8, Phase 1, Day 2
+
+---
+
+### Task 1.7: Apply Database Migrations
+
+**Task ID**: `DB-007`  
+**Priority**: CRITICAL  
+**Estimated Time**: 30 minutes
+
+**Description**:
+Apply migrations to create tables in Neon database.
+
+**Preconditions**:
+- Task DB-006 completed
+- Migration scripts validated
+
+**Expected Output**:
+- ✅ All tables created in Neon DB
+- ✅ Indexes created
+- ✅ Foreign keys established
+- ✅ Migration version tracked
+
+**Commands to Execute**:
+```bash
+cd backend
+alembic upgrade head
+```
+
+**Verification**:
+```sql
+-- Verify tables exist
+SELECT table_name FROM information_schema.tables 
+WHERE table_schema = 'public';
+
+-- Verify indexes
+SELECT indexname FROM pg_indexes 
+WHERE schemaname = 'public';
+```
+
+**Acceptance Criteria**:
+- tasks, conversations, messages tables created
+- All indexes present
+- Alembic version table tracking migrations
+
+**Mapping**:
+- **Specify**: Section 12.3 (Database Migration)
+- **Plan**: Section 8, Phase 1, Day 2
+
+---
+
+### Task 1.8: Create Database Test Suite
+
+**Task ID**: `DB-008`  
+**Priority**: MEDIUM  
+**Estimated Time**: 2 hours
+
+**Description**:
+Write tests for database models and operations.
+
+**Preconditions**:
+- Task DB-007 completed
+
+**Expected Output**:
+- ✅ Unit tests for Task model
+- ✅ Unit tests for Conversation model
+- ✅ Unit tests for Message model
+- ✅ Tests for user isolation
+- ✅ Tests for indexes
+
+**Files to Create**:
+- `backend/tests/test_models.py` - Model tests
+- `backend/tests/conftest.py` - Test fixtures
+
+**Test Cases**:
+1. Create task with all fields
+2. Create task with minimal fields
+3. Query tasks by user_id
+4. Filter tasks by completed status
+5. Create conversation and messages
+6. Verify user_id isolation
+7. Test timestamp auto-population
+
+**Acceptance Criteria**:
+- All tests pass
+- 100% coverage of model code
+- User isolation verified
+
+**Mapping**:
+- **Specify**: Section 11.1 (Unit Tests)
+- **Plan**: Section 8, Phase 1, Day 2
+
+---
+
+## PHASE 2: MCP SERVER IMPLEMENTATION (10 Tasks)
+
+### Task 2.1: Initialize MCP Server Project
+
+**Task ID**: `MCP-001`  
+**Priority**: CRITICAL  
+**Estimated Time**: 1 hour
+
+**Description**:
+Set up Official MCP SDK and server structure.
+
+**Preconditions**:
+- Official MCP SDK installed
+- Database foundation complete (Phase 1)
+
+**Expected Output**:
+- ✅ MCP SDK installed
+- ✅ Server structure created
+- ✅ Tool registration framework ready
+
+**Files to Create**:
+- `backend/app/mcp/__init__.py` - MCP package
+- `backend/app/mcp/server.py` - MCP server initialization
+- `backend/app/mcp/schemas.py` - MCP tool schemas
+- `backend/app/mcp/tools/__init__.py` - Tools package
+
+**Dependencies to Add**:
+```toml
+# pyproject.toml or requirements.txt
+mcp-sdk = "^1.0.0"  # Official MCP SDK
+```
+
+**Acceptance Criteria**:
+- MCP SDK imported successfully
+- Server can initialize without errors
+- Tool registration mechanism ready
+
+**Mapping**:
+- **Specify**: Section 3 (MCP Tool Specifications)
+- **Plan**: Section 4 (MCP Server Role and Boundaries)
+
+---
+
+### Task 2.2: Implement add_task MCP Tool
+
+**Task ID**: `MCP-002`  
+**Priority**: CRITICAL  
+**Estimated Time**: 2 hours
+
+**Description**:
+Implement add_task MCP tool for creating tasks.
+
+**Preconditions**:
+- Task MCP-001 completed
+- Task model available (DB-003)
+
+**Expected Output**:
+- ✅ add_task tool function implemented
+- ✅ Input validation working
+- ✅ Database insertion working
+- ✅ Returns correct format: {task_id, status, title}
+
+**Files to Create**:
+- `backend/app/mcp/tools/add_task.py` - Tool implementation
+
+**Function Signature**:
+```python
+async def add_task(
+    user_id: str,
+    title: str,
+    description: str = ""
+) -> dict:
+    """
+    Returns: {
+        "task_id": int,
+        "status": "created",
+        "title": str
+    }
+    """
+```
+
+**Validation Rules**:
+- title: required, non-empty, max 200 chars
+- description: optional, max 1000 chars
+- user_id: required, non-empty
+
+**Acceptance Criteria**:
+- Tool creates task in database
+- Returns exact format from specification
+- Validates inputs correctly
+- Handles errors gracefully
+
+**Mapping**:
+- **Specify**: Section 3.1 (add_task Tool)
+- **Plan**: Section 7.3 (MCP Tools Layer)
+
+---
+
+### Task 2.3: Implement list_tasks MCP Tool
+
+**Task ID**: `MCP-003`  
+**Priority**: CRITICAL  
+**Estimated Time**: 2 hours
+
+**Description**:
+Implement list_tasks MCP tool for retrieving tasks with filters.
+
+**Preconditions**:
+- Task MCP-001 completed
+- Task model available (DB-003)
+
+**Expected Output**:
+- ✅ list_tasks tool function implemented
+- ✅ Status filtering (all/pending/completed) working
+- ✅ User isolation enforced
+- ✅ Returns array of task objects
+
+**Files to Create**:
+- `backend/app/mcp/tools/list_tasks.py` - Tool implementation
+
+**Function Signature**:
+```python
+async def list_tasks(
+    user_id: str,
+    status: Optional[str] = None
+) -> list:
+    """
+    Returns: [
+        {"id": int, "title": str, "completed": bool},
+        ...
+    ]
+    """
+```
+
+**Filter Logic**:
+- status="all" or None: Return all tasks
+- status="pending": Return where completed=False
+- status="completed": Return where completed=True
+
+**Acceptance Criteria**:
+- Only returns tasks for specified user_id
+- Filters work correctly
+- Ordered by created_at DESC
+- Returns empty array when no tasks
+
+**Mapping**:
+- **Specify**: Section 3.2 (list_tasks Tool)
+- **Plan**: Section 7.3 (MCP Tools Layer)
+
+---
+
+### Task 2.4: Implement complete_task MCP Tool
+
+**Task ID**: `MCP-004`  
+**Priority**: CRITICAL  
+**Estimated Time**: 2 hours
+
+**Description**:
+Implement complete_task MCP tool for marking tasks as completed.
+
+**Preconditions**:
+- Task MCP-001 completed
+- Task model available (DB-003)
+
+**Expected Output**:
+- ✅ complete_task tool function implemented
+- ✅ Updates completed field to True
+- ✅ Updates updated_at timestamp
+- ✅ Returns {task_id, status, title}
+
+**Files to Create**:
+- `backend/app/mcp/tools/complete_task.py` - Tool implementation
+
+**Function Signature**:
+```python
+async def complete_task(
+    user_id: str,
+    task_id: int
+) -> dict:
+    """
+    Returns: {
+        "task_id": int,
+        "status": "completed",
+        "title": str
+    }
+    """
+```
+
+**Error Handling**:
+- Task not found → {"error": "TASK_NOT_FOUND", "message": "Task not found"}
+- Task belongs to different user → Same error (security)
+
+**Acceptance Criteria**:
+- Updates task.completed to True
+- Updates task.updated_at
+- Idempotent (completing already completed task succeeds)
+- User isolation enforced
+
+**Mapping**:
+- **Specify**: Section 3.3 (complete_task Tool)
+- **Plan**: Section 7.3 (MCP Tools Layer)
+
+---
+
+### Task 2.5: Implement delete_task MCP Tool
+
+**Task ID**: `MCP-005`  
+**Priority**: CRITICAL  
+**Estimated Time**: 2 hours
+
+**Description**:
+Implement delete_task MCP tool for removing tasks.
+
+**Preconditions**:
+- Task MCP-001 completed
+- Task model available (DB-003)
+
+**Expected Output**:
+- ✅ delete_task tool function implemented
+- ✅ Permanently removes task from database
+- ✅ Returns {task_id, status, title} before deletion
+- ✅ User isolation enforced
+
+**Files to Create**:
+- `backend/app/mcp/tools/delete_task.py` - Tool implementation
+
+**Function Signature**:
+```python
+async def delete_task(
+    user_id: str,
+    task_id: int
+) -> dict:
+    """
+    Returns: {
+        "task_id": int,
+        "status": "deleted",
+        "title": str
+    }
+    """
+```
+
+**Implementation Steps**:
+1. Query task by id AND user_id
+2. If not found → return error
+3. Store title for response
+4. Delete task
+5. Return confirmation
+
+**Acceptance Criteria**:
+- Hard delete (not soft delete)
+- Returns task details before deletion
+- User cannot delete other users' tasks
+- Error if task not found
+
+**Mapping**:
+- **Specify**: Section 3.4 (delete_task Tool)
+- **Plan**: Section 7.3 (MCP Tools Layer)
+
+---
+
+### Task 2.6: Implement update_task MCP Tool
+
+**Task ID**: `MCP-006`  
+**Priority**: CRITICAL  
+**Estimated Time**: 2 hours
+
+**Description**:
+Implement update_task MCP tool for modifying task title or description.
+
+**Preconditions**:
+- Task MCP-001 completed
+- Task model available (DB-003)
+
+**Expected Output**:
+- ✅ update_task tool function implemented
+- ✅ Partial updates supported (only provided fields)
+- ✅ Updates updated_at timestamp
+- ✅ Returns {task_id, status, title}
+
+**Files to Create**:
+- `backend/app/mcp/tools/update_task.py` - Tool implementation
+
+**Function Signature**:
+```python
+async def update_task(
+    user_id: str,
+    task_id: int,
+    title: Optional[str] = None,
+    description: Optional[str] = None
+) -> dict:
+    """
+    Returns: {
+        "task_id": int,
+        "status": "updated",
+        "title": str
+    }
+    """
+```
+
+**Update Logic**:
+- If title provided → update title
+- If description provided → update description
+- Always update updated_at
+- If neither provided → return error
+
+**Acceptance Criteria**:
+- Partial updates work correctly
+- Validates new title length if provided
+- User isolation enforced
+- Returns updated title in response
+
+**Mapping**:
+- **Specify**: Section 3.5 (update_task Tool)
+- **Plan**: Section 7.3 (MCP Tools Layer)
+
+---
+
+### Task 2.7: Register MCP Tools with Server
+
+**Task ID**: `MCP-007`  
+**Priority**: HIGH  
+**Estimated Time**: 1 hour
+
+**Description**:
+Register all 5 MCP tools with the MCP server for discovery.
+
+**Preconditions**:
+- Tasks MCP-002 through MCP-006 completed
+
+**Expected Output**:
+- ✅ All tools registered with MCP server
+- ✅ Tool schemas defined
+- ✅ Tools discoverable by agents
+- ✅ Tool metadata correct
+
+**Files to Modify**:
+- `backend/app/mcp/server.py` - Add tool registration
+
+**Registration Code**:
+```python
+from backend.app.mcp.tools import (
+    add_task, list_tasks, complete_task, delete_task, update_task
+)
+
+mcp_server.register_tool("add_task", add_task)
+mcp_server.register_tool("list_tasks", list_tasks)
+mcp_server.register_tool("complete_task", complete_task)
+mcp_server.register_tool("delete_task", delete_task)
+mcp_server.register_tool("update_task", update_task)
+```
+
+**Acceptance Criteria**:
+- All 5 tools registered
+- Tool names match specification exactly
+- Tool schemas valid
+- Server can list all tools
+
+**Mapping**:
+- **Specify**: Section 3 (MCP Tool Specifications)
+- **Plan**: Section 4.2 (MCP Tool Boundaries)
+
+---
+
+### Task 2.8: Create MCP Tool Schemas
+
+**Task ID**: `MCP-008`  
+**Priority**: HIGH  
+**Estimated Time**: 2 hours
+
+**Description**:
+Define Pydantic schemas for MCP tool inputs and outputs.
+
+**Preconditions**:
+- Tasks MCP-002 through MCP-006 completed
+
+**Expected Output**:
+- ✅ Input schemas for all tools
+- ✅ Output schemas for all tools
+- ✅ Validation working
+- ✅ Schema documentation
+
+**Files to Modify**:
+- `backend/app/mcp/schemas.py` - Tool schemas
+
+**Schemas to Create**:
+```python
+class AddTaskInput(BaseModel):
+    user_id: str
+    title: str = Field(min_length=1, max_length=200)
+    description: Optional[str] = Field(default="", max_length=1000)
+
+class AddTaskOutput(BaseModel):
+    task_id: int
+    status: Literal["created"]
+    title: str
+
+# ... similar for other tools
+```
+
+**Acceptance Criteria**:
+- All input constraints enforced
+- Output formats match specification
+- Validation errors descriptive
+- JSON serialization working
+
+**Mapping**:
+- **Specify**: Section 3 (MCP Tool Specifications)
+- **Plan**: Section 4.3 (MCP Server Implementation)
+
+---
+
+### Task 2.9: Implement MCP Tool Error Handling
+
+**Task ID**: `MCP-009`  
+**Priority**: HIGH  
+**Estimated Time**: 2 hours
+
+**Description**:
+Add comprehensive error handling to all MCP tools.
+
+**Preconditions**:
+- Tasks MCP-002 through MCP-006 completed
+
+**Expected Output**:
+- ✅ All tools handle errors gracefully
+- ✅ Structured error responses
+- ✅ Error logging implemented
+- ✅ Database errors caught
+
+**Error Response Format**:
+```python
+{
+    "error": "ERROR_CODE",
+    "message": "User-friendly message"
+}
+```
+
+**Error Types to Handle**:
+- TASK_NOT_FOUND
+- MISSING_TITLE
+- TITLE_TOO_LONG
+- INVALID_STATUS
+- DATABASE_ERROR
+
+**Files to Modify**:
+- All files in `backend/app/mcp/tools/`
+
+**Acceptance Criteria**:
+- All database errors caught
+- Errors logged with context
+- User-friendly error messages
+- No stack traces in responses
+
+**Mapping**:
+- **Specify**: Section 7 (Error Handling Specifications)
+- **Plan**: Section 4.2 (MCP Tool Boundaries)
+
+---
+
+### Task 2.10: Create MCP Tools Test Suite
+
+**Task ID**: `MCP-010`  
+**Priority**: HIGH  
+**Estimated Time**: 3 hours
+
+**Description**:
+Write comprehensive tests for all MCP tools.
+
+**Preconditions**:
+- Tasks MCP-002 through MCP-009 completed
+
+**Expected Output**:
+- ✅ Unit tests for each tool
+- ✅ Tests for success cases
+- ✅ Tests for error cases
+- ✅ Tests for user isolation
+- ✅ 100% code coverage
+
+**Files to Create**:
+- `backend/tests/test_mcp_tools.py` - MCP tool tests
+
+**Test Cases (per tool)**:
+1. Success case with valid inputs
+2. Missing required parameters
+3. Invalid parameter values
+4. Task not found (for update/delete/complete)
+5. User isolation (cannot access other users' tasks)
+6. Edge cases (empty strings, max lengths)
+
+**Acceptance Criteria**:
+- All tests pass
+- Coverage > 95%
+- User isolation verified
+- Error handling tested
+
+**Mapping**:
+- **Specify**: Section 11.1 (Unit Tests)
+- **Plan**: Section 8, Phase 2, Day 4
+
+---
+
+## PHASE 3: OPENAI AGENT INTEGRATION (8 Tasks)
+
+### Task 3.1: Install OpenAI Agents SDK
+
+**Task ID**: `AGENT-001`  
+**Priority**: CRITICAL  
+**Estimated Time**: 30 minutes
+
+**Description**:
+Install and configure OpenAI Agents SDK.
+
+**Preconditions**:
+- OpenAI API key available
+- MCP tools implemented (Phase 2)
+
+**Expected Output**:
+- ✅ OpenAI Agents SDK installed
+- ✅ API key configured
+- ✅ SDK imports working
+
+**Dependencies to Add**:
+```toml
+openai-agents-sdk = "^1.0.0"
+openai = "^1.0.0"
+```
+
+**Files to Modify**:
+- `backend/pyproject.toml` or `requirements.txt`
+- `backend/app/config.py` - Add OPENAI_API_KEY
+
+**Environment Variables**:
+```
+OPENAI_API_KEY=sk-...
+```
+
+**Acceptance Criteria**:
+- SDK installed successfully
+- Can import openai_agents
+- API key loaded from environment
+
+**Mapping**:
+- **Specify**: Section 12.1 (Environment Variables)
+- **Plan**: Section 8, Phase 3, Day 1
+
+---
+
+### Task 3.2: Create Agent Runner Module
+
+**Task ID**: `AGENT-002`  
+**Priority**: CRITICAL  
+**Estimated Time**: 2 hours
+
+**Description**:
+Create agent runner module for orchestrating OpenAI Agents with MCP tools.
+
+**Preconditions**:
+- Task AGENT-001 completed
+- MCP tools registered (MCP-007)
+
+**Expected Output**:
+- ✅ Agent runner module created
+- ✅ Agent initialization working
+- ✅ Tool registration with agent working
+- ✅ Message formatting implemented
+
+**Files to Create**:
+- `backend/app/ai/__init__.py` - AI package
+- `backend/app/ai/agent_runner.py` - Agent orchestration
+- `backend/app/ai/prompts.py` - System prompts
+
+**Function Signature**:
+```python
+async def run_agent(
+    messages: List[dict],
+    user_id: str,
+    available_tools: List[callable]
+) -> dict:
+    """
+    Returns: {
+        "response": str,
+        "tool_calls": List[dict]
+    }
+    """
+```
+
+**Acceptance Criteria**:
+- Agent initializes with system prompt
+- MCP tools registered with agent
+- Message history formatted correctly
+- Returns structured response
+
+**Mapping**:
+- **Specify**: Section 5 (Agent Behavior Specification)
+- **Plan**: Section 7.2 (Agent Runner Layer)
+
+---
+
+### Task 3.3: Define Agent System Prompt
+
+**Task ID**: `AGENT-003`  
+**Priority**: HIGH  
+**Estimated Time**: 1 hour
+
+**Description**:
+Create comprehensive system prompt for agent behavior.
+
+**Preconditions**:
+- Task AGENT-002 completed
+
+**Expected Output**:
+- ✅ System prompt defined
+- ✅ Tool usage instructions included
+- ✅ Behavior guidelines specified
+- ✅ Error handling guidance included
+
+**Files to Modify**:
+- `backend/app/ai/prompts.py`
+
+**System Prompt Requirements**:
+```python
+AGENT_SYSTEM_PROMPT = """
+You are a helpful task management assistant...
+
+Available tools:
+- add_task: Create new tasks
+- list_tasks: View tasks (all, pending, or completed)
+- complete_task: Mark tasks as done
+- delete_task: Remove tasks
+- update_task: Modify task details
+
+Guidelines:
+1. Always confirm actions with friendly messages
+2. Include relevant task details in responses
+3. Handle errors gracefully with helpful suggestions
+4. Use natural, conversational language
+5. When task title is ambiguous, list tasks first to find ID
+"""
+```
+
+**Acceptance Criteria**:
+- Covers all 5 tools
+- Includes behavior guidelines
+- Natural language focused
+- Error handling addressed
+
+**Mapping**:
+- **Specify**: Section 5 (Agent Behavior Specification)
+- **Plan**: Section 7.2 (Agent Runner Layer)
+
+---
+
+### Task 3.4: Implement Tool Call Routing
+
+**Task ID**: `AGENT-004`  
+**Priority**: HIGH  
+**Estimated Time**: 2 hours
+
+**Description**:
+Implement routing from agent tool calls to MCP server.
+
+**Preconditions**:
+- Task AGENT-002 completed
+- MCP tools available
+
+**Expected Output**:
+- ✅ Tool call routing working
+- ✅ Parameters passed correctly
+- ✅ Results returned to agent
+- ✅ Error handling implemented
+
+**Files to Modify**:
+- `backend/app/ai/agent_runner.py`
+
+**Routing Logic**:
+```python
+async def route_tool_call(tool_name: str, parameters: dict) -> dict:
+    tool_map = {
+        "add_task": add_task,
+        "list_tasks": list_tasks,
+        "complete_task": complete_task,
+        "delete_task": delete_task,
+        "update_task": update_task
+    }
+    
+    tool = tool_map.get(tool_name)
+    if not tool:
+        raise ValueError(f"Unknown tool: {tool_name}")
+    
+    return await tool(**parameters)
+```
+
+**Acceptance Criteria**:
+- All tools routable
+- Parameters passed correctly
+- Results returned properly
+- Unknown tools handled
+
+**Mapping**:
+- **Specify**: Section 5 (Agent Behavior)
+- **Plan**: Section 5 (Tool Invocation Flow)
+
+---
+
+### Task 3.5: Implement Agent Response Generation
+
+**Task ID**: `AGENT-005`  
+**Priority**: HIGH  
+**Estimated Time**: 2 hours
+
+**Description**:
+Implement natural language response generation from agent.
+
+**Preconditions**:
+- Task AGENT-004 completed
+
+**Expected Output**:
+- ✅ Agent generates responses
+- ✅ Tool results incorporated
+- ✅ Friendly, conversational tone
+- ✅ Error messages helpful
+
+**Files to Modify**:
+- `backend/app/ai/agent_runner.py`
+
+**Response Requirements**:
+- Include task details in confirmations
+- Use natural language
+- Provide helpful suggestions on errors
+- Match examples from specification
+
+**Example Responses**:
+```
+Success: "I've added 'Buy groceries' to your task list."
+Error: "I couldn't find task 999. Would you like to see your current tasks?"
+```
+
+**Acceptance Criteria**:
+- Responses match specification examples
+- Tone is friendly and helpful
+- Task details included
+- Errors handled gracefully
+
+**Mapping**:
+- **Specify**: Section 8.2 (Response Quality)
+- **Plan**: Section 7.2 (Agent Runner Layer)
+
+---
+
+### Task 3.6: Implement Multi-Tool Chaining
+
+**Task ID**: `AGENT-006`  
+**Priority**: MEDIUM  
+**Estimated Time**: 2 hours
+
+**Description**:
+Enable agent to chain multiple tool calls in single turn.
+
+**Preconditions**:
+- Task AGENT-005 completed
+
+**Expected Output**:
+- ✅ Agent can call multiple tools sequentially
+- ✅ Results from first tool used in second
+- ✅ Example: list_tasks → delete_task for ambiguous deletes
+
+**Files to Modify**:
+- `backend/app/ai/agent_runner.py`
+
+**Use Cases**:
+1. "Delete the meeting task" → list_tasks (find matches) → ask clarification OR delete_task
+2. Future: Bulk operations
+
+**Acceptance Criteria**:
+- Multiple tool calls work
+- Results passed between calls
+- Total execution time reasonable (<5s)
+
+**Mapping**:
+- **Specify**: Section 5 (Agent Behavior)
+- **Plan**: Section 5.2 (Multi-Tool Invocation)
+
+---
+
+### Task 3.7: Add Agent Error Handling
+
+**Task ID**: `AGENT-007`  
+**Priority**: HIGH  
+**Estimated Time**: 2 hours
+
+**Description**:
+Implement comprehensive error handling for agent execution.
+
+**Preconditions**:
+- Task AGENT-005 completed
+
+**Expected Output**:
+- ✅ OpenAI API errors handled
+- ✅ Tool errors handled
+- ✅ Timeout handling
+- ✅ Retry logic for transient errors
+
+**Files to Modify**:
+- `backend/app/ai/agent_runner.py`
+
+**Error Types**:
+1. OpenAI API errors (rate limit, service down)
+2. Tool execution errors (task not found, etc.)
+3. Timeout errors (agent too slow)
+4. Invalid tool calls
+
+**Acceptance Criteria**:
+- All error types caught
+- Graceful fallback responses
+- Errors logged with context
+- Retry logic for transient errors (3 attempts)
+
+**Mapping**:
+- **Specify**: Section 7 (Error Handling)
+- **Plan**: Section 7.2 (Agent Runner Layer)
+
+---
+
+### Task 3.8: Create Agent Test Suite
+
+**Task ID**: `AGENT-008`  
+**Priority**: HIGH  
+**Estimated Time**: 3 hours
+
+**Description**:
+Write comprehensive tests for agent runner.
+
+**Preconditions**:
+- Tasks AGENT-002 through AGENT-007 completed
+
+**Expected Output**:
+- ✅ Integration tests for agent + MCP tools
+- ✅ Tests for each natural language pattern
+- ✅ Tests for error handling
+- ✅ Tests for multi-tool chaining
+
+**Files to Create**:
+- `backend/tests/test_agent_runner.py`
+
+**Test Scenarios**:
+1. "Add a task to buy groceries" → add_task called
+2. "Show my tasks" → list_tasks called
+3. "Complete task 1" → complete_task called
+4. "Delete the meeting task" → list_tasks + delete_task
+5. Task not found → error handled gracefully
+6. OpenAI API error → retry and fallback
+
+**Acceptance Criteria**:
+- All natural language patterns tested
+- Error handling verified
+- Mock OpenAI API for deterministic tests
+- Coverage > 90%
+
+**Mapping**:
+- **Specify**: Section 11.2 (Integration Tests)
+- **Plan**: Section 8, Phase 3, Day 2
+
+---
+
+## PHASE 4: CHAT API DEVELOPMENT (10 Tasks)
+
+### Task 4.1: Create FastAPI Application Structure
+
+**Task ID**: `API-001`  
+**Priority**: CRITICAL  
+**Estimated Time**: 1 hour
+
+**Description**:
+Set up FastAPI application with proper structure.
+
+**Preconditions**:
+- FastAPI installed
+- Database and agent components ready
+
+**Expected Output**:
+- ✅ FastAPI app initialized
+- ✅ CORS configured
+- ✅ Middleware configured
+- ✅ Router structure created
+
+**Files to Create**:
+- `backend/app/main.py` - FastAPI application
+- `backend/app/routes/__init__.py` - Routes package
+- `backend/app/middleware/__init__.py` - Middleware package
+
+**Main App Requirements**:
+```python
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI(
+    title="Todo AI Chatbot API",
+    version="1.0.0"
+)
+
+# CORS for ChatKit frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Configure for production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+```
+
+**Acceptance Criteria**:
+- App starts without errors
+- CORS configured
+- Health check endpoint works
+- OpenAPI docs accessible
+
+**Mapping**:
+- **Specify**: Section 6 (Chat API Endpoint)
+- **Plan**: Section 7.1 (Chat API Layer)
+
+---
+
+### Task 4.2: Create Request/Response Schemas
+
+**Task ID**: `API-002`  
+**Priority**: HIGH  
+**Estimated Time**: 1 hour
+
+**Description**:
+Define Pydantic schemas for chat API request and response.
+
+**Preconditions**:
+- Task API-001 completed
+
+**Expected Output**:
+- ✅ ChatRequest schema defined
+- ✅ ChatResponse schema defined
+- ✅ Validation working
+
+**Files to Create**:
+- `backend/app/schemas/__init__.py` - Schemas package
+- `backend/app/schemas/chat.py` - Chat schemas
+
+**Schema Definitions**:
+```python
+class ChatRequest(BaseModel):
+    conversation_id: Optional[int] = None
+    message: str = Field(min_length=1, max_length=2000)
+
+class ToolCall(BaseModel):
+    tool: str
+    parameters: dict
+    result: dict
+
+class ChatResponse(BaseModel):
+    conversation_id: int
+    response: str
+    tool_calls: List[ToolCall] = []
+
+# CONTEXT WINDOW CONSTANT
+MAX_CONTEXT_MESSAGES = 50  # Only last 50 messages sent to agent
+```
+
+**Acceptance Criteria**:
+- Schemas match API specification exactly
+- Validation enforces constraints
+- JSON serialization working
+- Documentation auto-generated
+
+**Mapping**:
+- **Specify**: Section 6 (Chat API Endpoint)
+- **Plan**: Section 7.1 (Chat API Layer)
+
+---
+
+### Task 4.3: Implement Conversation Loading Logic with Message Windowing
+
+**Task ID**: `API-003`  
+**Priority**: CRITICAL  
+**Estimated Time**: 2 hours
+
+**Description**:
+Implement logic to load or create conversations with 50-message context window enforcement.
+
+**Preconditions**:
+- Task API-002 completed
+- Conversation model available (DB-004)
+
+**Expected Output**:
+- ✅ Loads existing conversation by ID
+- ✅ Loads ONLY last 50 messages from conversation
+- ✅ Older messages remain in DB but not sent to agent
+- ✅ Creates new conversation if not provided
+- ✅ Validates conversation belongs to user
+- ✅ Returns 403 for cross-user access
+
+**Files to Create**:
+- `backend/app/services/__init__.py` - Services package
+- `backend/app/services/conversation_service.py` - Conversation logic
+
+**Function Signature**:
+```python
+async def load_or_create_conversation(
+    user_id: str,
+    conversation_id: Optional[int] = None,
+    db: Session = None
+) -> Conversation:
+    """
+    Load existing conversation or create new one.
+    Validates user_id ownership.
+    """
+
+# CRITICAL: Message windowing constant
+MAX_CONTEXT_MESSAGES = 50  # Only last 50 messages sent to agent
+```
+
+**Acceptance Criteria**:
+- Creates conversation if conversation_id is None
+- Loads conversation if ID provided
+- Validates user_id matches
+- Raises 403 for cross-user access
+- **MAX_CONTEXT_MESSAGES constant defined and used**
+
+**Mapping**:
+- **Specify**: Section 2.2 (Conversation Resume via DB)
+- **Plan**: Section 2.1 (Stateless Chat Flow, Step 3)
+
+---
+
+### Task 4.4: Implement Message History Loading with 50-Message Window
+
+**Task ID**: `API-004`  
+**Priority**: CRITICAL  
+**Estimated Time**: 2 hours
+
+**Description**:
+Implement logic to load conversation message history with context window enforcement.
+
+**Preconditions**:
+- Task API-003 completed
+- Message model available (DB-005)
+
+**Expected Output**:
+- ✅ Loads last 50 messages ONLY from conversation
+- ✅ Orders messages chronologically (oldest to newest)
+- ✅ Filters by user_id for security
+- ✅ Older messages stay in DB (not deleted, just not loaded)
+
+**Implementation Requirements**:
+```python
+async def load_message_history(
+    conversation_id: int,
+    user_id: str,
+    db: Session,
+    limit: int = 50  # Context window size
+) -> List[Message]:
+    \"\"\"
+    Load last N messages from conversation.
+    
+    CRITICAL: Only loads last 50 messages to prevent:
+    - OpenAI API token limit errors
+    - Agent performance degradation
+    - Context length errors
+    
+    Older messages remain in DB for:
+    - Full conversation history retrieval
+    - Audit/compliance
+    - Future analysis
+    \"\"\"
+    statement = (
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .where(Message.user_id == user_id)
+        .order_by(Message.created_at.desc())  # Most recent first
+        .limit(limit)  # Take last 50
+    )
+    messages = session.exec(statement).all()
+    return list(reversed(messages))  # Reverse to chronological order
+```
+
+**Acceptance Criteria**:
+- Query uses `LIMIT 50` to restrict message count
+- Query orders by `created_at DESC` then reverses
+- Returns chronologically ordered messages (oldest to newest)
+- All messages filtered by user_id for security
+- **Older messages (beyond 50) remain in database**
+- **Agent receives maximum 50 messages**
+
+**Expected Output**:
+- ✅ Loads all messages for conversation
+- ✅ Orders by created_at ASC (chronological)
+- ✅ Formats for agent consumption
+- ✅ Limits to last N messages for performance
+
+**Files to Create**:
+- `backend/app/services/message_service.py` - Message logic
+
+**Function Signature**:
+```python
+async def load_conversation_messages(
+    conversation_id: int,
+    user_id: str,
+    limit: int = 50,
+    db: Session = None
+) -> List[dict]:
+    """
+    Returns: [
+        {"role": "user", "content": "..."},
+        {"role": "assistant", "content": "..."},
+        ...
+    ]
+    """
+```
+
+**Acceptance Criteria**:
+- Messages ordered chronologically
+- User isolation enforced
+- Limit applied (default 50)
+- Format ready for agent
+
+**Mapping**:
+- **Specify**: Section 2.2 (Conversation Resume)
+- **Plan**: Section 2.1 (Step 3)
+
+---
+
+### Task 4.5: Implement Message Persistence
+
+**Task ID**: `API-005`  
+**Priority**: CRITICAL  
+**Estimated Time**: 2 hours
+
+**Description**:
+Implement logic to save user and assistant messages.
+
+**Preconditions**:
+- Task API-004 completed
+
+**Expected Output**:
+- ✅ Saves user messages to database
+- ✅ Saves assistant responses to database
+- ✅ Updates conversation.updated_at
+- ✅ Atomic transactions
+
+**Files to Modify**:
+- `backend/app/services/message_service.py`
+
+**Function Signatures**:
+```python
+async def save_user_message(
+    conversation_id: int,
+    user_id: str,
+    content: str,
+    db: Session
+) -> Message:
+    """Save user message to database"""
+
+async def save_assistant_message(
+    conversation_id: int,
+    user_id: str,
+    content: str,
+    db: Session
+) -> Message:
+    """Save assistant response to database"""
+```
+
+**Acceptance Criteria**:
+- Messages persisted correctly
+- Timestamps auto-populated
+- conversation.updated_at updated
+- Database transactions atomic
+
+**Mapping**:
+- **Specify**: Section 2.1 (Stateless Request Cycle)
+- **Plan**: Section 2.1 (Steps 4, 9)
+
+---
+
+### Task 4.6: Implement Chat Endpoint
+
+**Task ID**: `API-006`  
+**Priority**: CRITICAL  
+**Estimated Time**: 3 hours
+
+**Description**:
+Implement main chat endpoint orchestrating all components.
+
+**Preconditions**:
+- Tasks API-003, API-004, API-005 completed
+- Agent runner available (AGENT-002)
+
+**Expected Output**:
+- ✅ POST /api/{user_id}/chat endpoint working
+- ✅ Stateless request cycle implemented
+- ✅ All steps from plan executed
+- ✅ Response format matches specification
+
+**Files to Create**:
+- `backend/app/routes/chat.py` - Chat endpoint
+
+**Endpoint Implementation**:
+```python
+@router.post("/api/{user_id}/chat", response_model=ChatResponse)
+async def chat_endpoint(
+    user_id: str,
+    request: ChatRequest,
+    db: Session = Depends(get_db)
+) -> ChatResponse:
+    # 1. Load/create conversation
+    # 2. Load message history
+    # 3. Save user message
+    # 4. Run agent with MCP tools
+    # 5. Save assistant response
+    # 6. Update conversation timestamp
+    # 7. Return response
+    # 8. State discarded after return
+```
+
+**Acceptance Criteria**:
+- All 11 steps from plan executed
+- No state retained after request
+- Response format correct
+- Error handling comprehensive
+
+**Mapping**:
+- **Specify**: Section 6 (Chat API Endpoint)
+- **Plan**: Section 2.1 (Stateless Chat Flow)
+
+---
+
+### Task 4.7: Add User ID Validation Middleware
+
+**Task ID**: `API-007`  
+**Priority**: HIGH  
+**Estimated Time**: 1 hour
+
+**Description**:
+Add middleware to validate user_id format and existence.
+
+**Preconditions**:
+- Task API-006 completed
+
+**Expected Output**:
+- ✅ user_id format validated
+- ✅ Invalid user_ids rejected (400)
+- ✅ Validation logged
+
+**Files to Create**:
+- `backend/app/middleware/validation.py` - Validation middleware
+
+**Validation Rules**:
+- user_id: non-empty, alphanumeric + underscore, max 50 chars
+- Pattern: `^[a-zA-Z0-9_]{1,50}$`
+
+**Acceptance Criteria**:
+- Empty user_id rejected
+- Invalid characters rejected
+- Too long user_id rejected
+- Valid user_ids pass through
+
+**Mapping**:
+- **Specify**: Section 10.2 (Input Validation)
+- **Plan**: Section 7.1 (Chat API Layer)
+
+---
+
+### Task 4.8: Implement Request Logging
+
+**Task ID**: `API-008`  
+**Priority**: MEDIUM  
+**Estimated Time**: 1 hour
+
+**Description**:
+Add comprehensive request logging for monitoring and debugging.
+
+**Preconditions**:
+- Task API-006 completed
+
+**Expected Output**:
+- ✅ All requests logged
+- ✅ Response times tracked
+- ✅ Errors logged with context
+- ✅ Tool calls logged
+
+**Files to Create**:
+- `backend/app/middleware/logging.py` - Logging middleware
+- `backend/app/utils/logger.py` - Logger configuration
+
+**Log Information**:
+- Request ID (UUID)
+- user_id
+- conversation_id
+- Message content (truncated)
+- Tool calls made
+- Response time
+- Error details (if any)
+
+**Acceptance Criteria**:
+- All requests logged
+- Structured logging (JSON)
+- Log levels appropriate
+- Sensitive data not logged
+
+**Mapping**:
+- **Specify**: Section 12.4 (Monitoring)
+- **Plan**: Section 11 (Monitoring and Observability)
+
+---
+
+### Task 4.9: Add Tool Call Logging
+
+**Task ID**: `API-009`  
+**Priority**: MEDIUM  
+**Estimated Time**: 2 hours
+
+**Description**:
+Implement detailed logging of MCP tool invocations.
+
+**Preconditions**:
+- Task API-008 completed
+
+**Expected Output**:
+- ✅ Tool calls logged with parameters
+- ✅ Tool results logged
+- ✅ Tool execution time tracked
+- ✅ Tool errors logged
+
+**Files to Modify**:
+- `backend/app/ai/agent_runner.py` - Add tool call logging
+
+**Log Entry Format**:
+```json
+{
+  "request_id": "uuid",
+  "user_id": "ziakhan",
+  "tool": "add_task",
+  "parameters": {"title": "Buy groceries", ...},
+  "result": {"task_id": 5, "status": "created", ...},
+  "execution_time_ms": 45,
+  "timestamp": "2026-01-03T10:30:00Z"
+}
+```
+
+**Acceptance Criteria**:
+- All tool calls logged
+- Parameters and results captured
+- Execution time tracked
+- Errors logged separately
+
+**Mapping**:
+- **Specify**: Section 6 (Response - tool_calls)
+- **Plan**: Section 11 (Monitoring)
+
+---
+
+### Task 4.10: Create Chat API Test Suite
+
+**Task ID**: `API-010`  
+**Priority**: HIGH  
+**Estimated Time**: 3 hours
+
+**Description**:
+Write comprehensive tests for chat API endpoint.
+
+**Preconditions**:
+- Tasks API-006 through API-009 completed
+
+**Expected Output**:
+- ✅ Integration tests for chat endpoint
+- ✅ Tests for new conversation
+- ✅ Tests for resuming conversation
+- ✅ Tests for error cases
+- ✅ Tests for stateless behavior
+
+**Files to Create**:
+- `backend/tests/test_chat_api.py`
+
+**Test Scenarios**:
+1. New conversation creation
+2. Resume existing conversation
+3. Cross-user conversation access (403)
+4. Invalid user_id (400)
+5. Agent invokes tool successfully
+6. Agent handles tool error
+7. Message history loaded correctly
+8. Messages persisted correctly
+9. Server restart doesn't affect conversation
+
+**Acceptance Criteria**:
+- All scenarios pass
+- Stateless behavior verified
+- User isolation verified
+- Coverage > 90%
+
+**Mapping**:
+- **Specify**: Section 11.2 (Integration Tests)
+- **Plan**: Section 8, Phase 4, Day 2
+
+---
+
+## PHASE 5: FRONTEND INTEGRATION (5 Tasks)
+
+### Task 5.1: Initialize ChatKit Project
+
+**Task ID**: `FRONT-001`  
+**Priority**: CRITICAL  
+**Estimated Time**: 2 hours
+
+**Description**:
+Set up OpenAI ChatKit frontend project.
+
+**Preconditions**:
+- Backend API running (Phase 4 complete)
+- OpenAI account with ChatKit access
+
+**Expected Output**:
+- ✅ ChatKit project created
+- ✅ Dependencies installed
+- ✅ Development server running
+- ✅ Basic UI visible
+
+**Files to Create**:
+- `frontend/package.json` - Dependencies
+- `frontend/next.config.js` - Next.js config
+- `frontend/.env.local` - Environment variables
+- `frontend/app/page.tsx` - Main page
+
+**Commands**:
+```bash
+npx create-next-app@latest frontend --typescript
+cd frontend
+npm install openai-chatkit
+```
+
+**Acceptance Criteria**:
+- Project created successfully
+- Dev server runs on localhost:3000
+- ChatKit components importable
+- TypeScript configured
+
+**Mapping**:
+- **Specify**: Section 1 (System Overview - Frontend)
+- **Plan**: Section 8, Phase 5, Day 1
+
+---
+
+### Task 5.2: Configure ChatKit with Backend
+
+**Task ID**: `FRONT-002`  
+**Priority**: CRITICAL  
+**Estimated Time**: 2 hours
+
+**Description**:
+Connect ChatKit to backend API endpoint.
+
+**Preconditions**:
+- Task FRONT-001 completed
+- Backend API accessible
+
+**Expected Output**:
+- ✅ ChatKit configured to use backend
+- ✅ API endpoint set correctly
+- ✅ Messages sent to backend
+- ✅ Responses displayed
+
+**Files to Modify**:
+- `frontend/app/page.tsx` - ChatKit configuration
+- `frontend/.env.local` - API URL
+
+**Configuration**:
+```typescript
+const chatConfig = {
+  apiEndpoint: process.env.NEXT_PUBLIC_API_URL,
+  userId: "ziakhan",  // TODO: Get from auth
+  onMessage: handleMessage
+}
+```
+
+**Acceptance Criteria**:
+- Messages reach backend
+- Responses displayed in UI
+- Conversation ID tracked
+- Loading states shown
+
+**Mapping**:
+- **Specify**: Section 1 (System Overview)
+- **Plan**: Section 8, Phase 5, Day 2
+
+---
+
+### Task 5.3: Configure OpenAI Domain Allowlist
+
+**Task ID**: `FRONT-003`  
+**Priority**: HIGH  
+**Estimated Time**: 1 hour
+
+**Description**:
+Set up domain allowlist for production ChatKit deployment.
+
+**Preconditions**:
+- Frontend deployed to production URL
+- OpenAI account access
+
+**Expected Output**:
+- ✅ Production domain added to OpenAI allowlist
+- ✅ Domain key obtained
+- ✅ Environment variable set
+- ✅ ChatKit works in production
+
+**Steps**:
+1. Deploy frontend to Vercel (or other host)
+2. Get production URL
+3. Navigate to OpenAI domain allowlist settings
+4. Add domain
+5. Copy domain key
+6. Set NEXT_PUBLIC_OPENAI_DOMAIN_KEY
+
+**Environment Variable**:
+```
+NEXT_PUBLIC_OPENAI_DOMAIN_KEY=your-domain-key-here
+```
+
+**Acceptance Criteria**:
+- Domain added to allowlist
+- Domain key configured
+- Production ChatKit functional
+- Local development still works
+
+**Mapping**:
+- **Specify**: Section 12.2 (ChatKit Setup)
+- **Plan**: Section 8, Phase 5, Day 3
+
+---
+
+### Task 5.4: Implement Conversation History Display
+
+**Task ID**: `FRONT-004`  
+**Priority**: MEDIUM  
+**Estimated Time**: 2 hours
+
+**Description**:
+Display conversation history in ChatKit UI.
+
+**Preconditions**:
+- Task FRONT-002 completed
+
+**Expected Output**:
+- ✅ Previous messages displayed
+- ✅ User/assistant messages distinguished
+- ✅ Timestamps shown
+- ✅ Scrollable history
+
+**Files to Modify**:
+- `frontend/app/page.tsx`
+- `frontend/components/MessageList.tsx` (if custom)
+
+**UI Requirements**:
+- User messages aligned right
+- Assistant messages aligned left
+- Clear visual distinction
+- Timestamps for each message
+- Auto-scroll to latest
+
+**Acceptance Criteria**:
+- History loads on page load
+- New messages appear immediately
+- Scrolling smooth
+- Mobile responsive
+
+**Mapping**:
+- **Specify**: Section 8.3 (Context Awareness)
+- **Plan**: Section 8, Phase 5, Day 3
+
+---
+
+### Task 5.5: Add Error Handling UI
+
+**Task ID**: `FRONT-005`  
+**Priority**: MEDIUM  
+**Estimated Time**: 2 hours
+
+**Description**:
+Implement user-friendly error handling in frontend.
+
+**Preconditions**:
+- Task FRONT-002 completed
+
+**Expected Output**:
+- ✅ Network errors shown to user
+- ✅ API errors displayed appropriately
+- ✅ Loading states during requests
+- ✅ Retry mechanism for failures
+
+**Files to Modify**:
+- `frontend/app/page.tsx`
+- `frontend/components/ErrorMessage.tsx`
+
+**Error Types**:
+1. Network error (backend down)
+2. API error (400, 500)
+3. Timeout
+4. Invalid response
+
+**UI Requirements**:
+- Error message display
+- Retry button
+- Error doesn't break UI
+- Clear to user what happened
+
+**Acceptance Criteria**:
+- All error types handled
+- User can retry
+- Errors logged to console
+- UI remains functional
+
+**Mapping**:
+- **Specify**: Section 7 (Error Handling)
+- **Plan**: Section 8, Phase 5, Day 4
+
+---
+
+## PHASE 6: TESTING & DEPLOYMENT (4 Tasks)
+
+### Task 6.1: Create End-to-End Test Suite
+
+**Task ID**: `TEST-001`  
+**Priority**: HIGH  
+**Estimated Time**: 4 hours
+
+**Description**:
+Write comprehensive end-to-end tests for complete user journeys.
+
+**Preconditions**:
+- All previous phases completed
+- Frontend and backend integrated
+
+**Expected Output**:
+- ✅ E2E tests for all user journeys
+- ✅ Tests for conversation persistence
+- ✅ Tests for error handling
+- ✅ Tests for multi-tool scenarios
+
+**Files to Create**:
+- `backend/tests/test_e2e.py` - E2E tests
+- `backend/tests/fixtures/` - Test data
+
+**Test Journeys**:
+1. Complete task lifecycle (add → list → complete → delete)
+2. Multi-turn conversation
+3. Conversation resume after "server restart"
+4. Error recovery
+5. Multi-tool chaining (delete ambiguous task)
+
+**Acceptance Criteria**:
+- All user journeys from specify tested
+- Tests run against real database (test DB)
+- Tests cleanup after themselves
+- All tests pass
+
+**Mapping**:
+- **Specify**: Section 11.2 (Integration Tests)
+- **Plan**: Section 8, Phase 6, Day 1
+
+---
+
+### Task 6.2: Perform Load Testing
+
+**Task ID**: `TEST-002`  
+**Priority**: MEDIUM  
+**Estimated Time**: 3 hours
+
+**Description**:
+Perform load testing to verify performance requirements.
+
+**Preconditions**:
+- Task TEST-001 completed
+- Backend deployed to staging
+
+**Expected Output**:
+- ✅ Load test scripts created
+- ✅ 100 concurrent users tested
+- ✅ Performance metrics collected
+- ✅ Bottlenecks identified
+
+**Tools to Use**:
+- Locust or Apache JMeter
+- Database query profiling
+
+**Test Scenarios**:
+1. 100 concurrent users sending messages
+2. 1000 requests/minute sustained
+3. Database connection pool limits
+4. Memory usage over time
+
+**Acceptance Criteria**:
+- p95 response time < 3 seconds
+- No memory leaks
+- Database connections stable
+- Error rate < 1%
+
+**Mapping**:
+- **Specify**: Section 9.2 (Throughput)
+- **Plan**: Section 11.3 (Load Tests)
+
+---
+
+### Task 6.3: Deploy Backend to Production
+
+**Task ID**: `DEPLOY-001`  
+**Priority**: CRITICAL  
+**Estimated Time**: 3 hours
+
+**Description**:
+Deploy FastAPI backend to production environment.
+
+**Preconditions**:
+- All tests passing (TEST-001, TEST-002)
+- Production database ready
+- Environment variables configured
+
+**Expected Output**:
+- ✅ Backend deployed to production
+- ✅ Health check endpoint accessible
+- ✅ Database migrations applied
+- ✅ Monitoring configured
+
+**Deployment Checklist**:
+- [ ] Environment variables set
+- [ ] Database URL configured
+- [ ] OpenAI API key set
+- [ ] CORS origins configured
+- [ ] SSL/TLS enabled
+- [ ] Logging configured
+- [ ] Health check working
+
+**Acceptance Criteria**:
+- API accessible via HTTPS
+- Health check returns 200
+- Database connection working
+- No errors in logs
+
+**Mapping**:
+- **Specify**: Section 12 (Deployment)
+- **Plan**: Section 8, Phase 6, Day 2
+
+---
+
+### Task 6.4: Deploy Frontend to Vercel
+
+**Task ID**: `DEPLOY-002`  
+**Priority**: CRITICAL  
+**Estimated Time**: 2 hours
+
+**Description**:
+Deploy ChatKit frontend to Vercel.
+
+**Preconditions**:
+- Backend deployed (DEPLOY-001)
+- Domain allowlist configured (FRONT-003)
+
+**Expected Output**:
+- ✅ Frontend deployed to Vercel
+- ✅ Connected to production backend
+- ✅ Domain key configured
+- ✅ ChatKit functional
+
+**Deployment Steps**:
+1. Connect GitHub repo to Vercel
+2. Configure environment variables
+3. Deploy
+4. Verify domain allowlist
+5. Test production chatbot
+
+**Environment Variables**:
+```
+NEXT_PUBLIC_API_URL=https://api.example.com
+NEXT_PUBLIC_OPENAI_DOMAIN_KEY=your-key
+```
+
+**Acceptance Criteria**:
+- Frontend accessible via HTTPS
+- Connects to backend successfully
+- All features working
+- No console errors
+
+**Mapping**:
+- **Specify**: Section 12.2 (ChatKit Deployment)
+- **Plan**: Section 8, Phase 6, Day 3
+
+---
+
+## TASK DEPENDENCIES
+
+### Critical Path
+```
+DB-001 → DB-002 → DB-003,004,005 → DB-006 → DB-007
+    ↓
+MCP-001 → MCP-002,003,004,005,006 → MCP-007
+    ↓
+AGENT-001 → AGENT-002 → AGENT-003,004,005
+    ↓
+API-001 → API-002 → API-003,004,005 → API-006
+    ↓
+FRONT-001 → FRONT-002 → FRONT-003
+    ↓
+TEST-001 → TEST-002 → DEPLOY-001 → DEPLOY-002
+```
+
+### Parallel Tasks (Can Be Done Simultaneously)
+
+**After DB-007**:
+- DB-008 (tests)
+- MCP-001 (setup)
+
+**After MCP-007**:
+- MCP-008 (schemas)
+- MCP-009 (error handling)
+- MCP-010 (tests)
+
+**After AGENT-005**:
+- AGENT-006 (multi-tool)
+- AGENT-007 (error handling)
+- AGENT-008 (tests)
+
+**After API-006**:
+- API-007 (validation)
+- API-008 (logging)
+- API-009 (tool logging)
+- API-010 (tests)
+
+**After FRONT-002**:
+- FRONT-004 (history)
+- FRONT-005 (errors)
+
+---
+
+## TASK SUMMARY BY CATEGORY
+
+### Database (8 tasks)
+- Setup: DB-001, DB-002
+- Models: DB-003, DB-004, DB-005
+- Migration: DB-006, DB-007
+- Testing: DB-008
+
+### MCP Tools (10 tasks)
+- Setup: MCP-001
+- Tools: MCP-002, MCP-003, MCP-004, MCP-005, MCP-006
+- Registration: MCP-007
+- Infrastructure: MCP-008, MCP-009
+- Testing: MCP-010
+
+### Agent (8 tasks)
+- Setup: AGENT-001, AGENT-002
+- Configuration: AGENT-003
+- Core: AGENT-004, AGENT-005
+- Advanced: AGENT-006, AGENT-007
+- Testing: AGENT-008
+
+### API (10 tasks)
+- Setup: API-001, API-002
+- Core: API-003, API-004, API-005, API-006
+- Infrastructure: API-007, API-008, API-009
+- Testing: API-010
+
+### Frontend (5 tasks)
+- Setup: FRONT-001, FRONT-002, FRONT-003
+- Features: FRONT-004, FRONT-005
+
+### Testing & Deployment (4 tasks)
+- Testing: TEST-001, TEST-002
+- Deployment: DEPLOY-001, DEPLOY-002
+
+---
+
+## VERIFICATION CHECKLIST
+
+After completing all tasks, verify:
+
+### Functionality
+- [ ] All 5 MCP tools working
+- [ ] Agent understands natural language
+- [ ] Chat API returns correct responses
+- [ ] Conversations persist across sessions
+- [ ] Frontend displays messages correctly
+- [ ] Error handling working
+
+### Performance
+- [ ] Response time < 3s (p95)
+- [ ] 100 concurrent users supported
+- [ ] No memory leaks
+- [ ] Database queries optimized
+
+### Security
+- [ ] User isolation enforced
+- [ ] Cross-user access blocked
+- [ ] Input validation working
+- [ ] No sensitive data in logs
+
+### Deployment
+- [ ] Backend deployed and accessible
+- [ ] Frontend deployed and functional
+- [ ] Database migrations applied
+- [ ] Monitoring configured
+- [ ] Health checks working
+
+### Documentation
+- [ ] README with setup instructions
+- [ ] API documentation
+- [ ] Environment variables documented
+- [ ] Deployment guide complete
+
+---
+
+## DOCUMENT APPROVAL
+
+**Created By**: AI Agent  
+**Date**: January 3, 2026  
+**Version**: 1.0.0  
+**Status**: Ready for Implementation
+
+**Change Log**:
+- v1.0.0 (2026-01-03): Initial task breakdown
+
+---
+
+*These tasks are executable and must be followed in order respecting dependencies. Each task is atomic and testable independently.*

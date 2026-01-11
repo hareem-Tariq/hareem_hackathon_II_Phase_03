@@ -1,0 +1,1195 @@
+# SpecKit Plan: Phase III AI Todo Chatbot
+
+## Document Information
+- **Project**: AI-Powered Todo Chatbot (Phase III)
+- **Version**: 1.0.0
+- **Date**: January 3, 2026
+- **Status**: Active
+- **Based On**: speckit.specify v1.0.0
+- **Constitution**: speckit.constitution v1.0.0
+
+---
+
+## Executive Summary
+
+This plan outlines the implementation strategy for Phase III of the Todo application, transforming it into an AI-powered conversational chatbot. The system leverages OpenAI Agents SDK with MCP (Model Context Protocol) tools to provide natural language task management through a stateless, scalable architecture.
+
+**Key Innovation**: Complete stateless backend where ALL conversation and task state persists in database, enabling horizontal scaling and resilience.
+
+---
+
+## 1. SYSTEM ARCHITECTURE
+
+### 1.1 High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          CLIENT LAYER                                   │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │                   OpenAI ChatKit (Frontend)                        │ │
+│  │  - Next.js/React-based conversational UI                          │ │
+│  │  - Domain allowlist configured for production                     │ │
+│  │  - NEXT_PUBLIC_OPENAI_DOMAIN_KEY environment variable             │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │ HTTPS
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          API LAYER                                      │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │               FastAPI Backend (Stateless)                          │ │
+│  │  ┌─────────────────────────────────────────────────────────────┐  │ │
+│  │  │  POST /api/{user_id}/chat                                   │  │ │
+│  │  │  - Validate user_id                                         │  │ │
+│  │  │  - Load conversation from DB                                │  │ │
+│  │  │  - Store incoming message                                   │  │ │
+│  │  │  - Invoke Agent Runner                                      │  │ │
+│  │  │  - Store response                                           │  │ │
+│  │  │  - Return JSON response                                     │  │ │
+│  │  └─────────────────────────────────────────────────────────────┘  │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          AI AGENT LAYER                                 │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │             OpenAI Agents SDK (Agent + Runner)                     │ │
+│  │  - Receives conversation history + new message                    │ │
+│  │  - Analyzes intent using LLM                                      │ │
+│  │  - Determines which MCP tools to invoke                          │ │
+│  │  - Chains multiple tool calls if needed                          │ │
+│  │  - Generates natural language response                           │ │
+│  │  - NO STATE: Stateless function execution                        │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          MCP TOOLS LAYER                                │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │           MCP Server (Official MCP SDK)                            │ │
+│  │  ┌────────────┬────────────┬──────────┬────────────┬────────────┐ │ │
+│  │  │ add_task   │ list_tasks │ complete │ delete_task│ update_task│ │ │
+│  │  │            │            │ _task    │            │            │ │ │
+│  │  └────────────┴────────────┴──────────┴────────────┴────────────┘ │ │
+│  │  - Each tool is a stateless function                              │ │
+│  │  - Direct database operations                                     │ │
+│  │  - User isolation enforced (user_id filter)                       │ │
+│  │  - Structured return values                                       │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          DATA LAYER                                     │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │              Neon Serverless PostgreSQL                            │ │
+│  │  ┌──────────────┬─────────────────┬──────────────────────────┐   │ │
+│  │  │ tasks        │ conversations   │ messages                 │   │ │
+│  │  │ - user_id    │ - user_id       │ - user_id                │   │ │
+│  │  │ - id         │ - id            │ - id                     │   │ │
+│  │  │ - title      │ - created_at    │ - conversation_id        │   │ │
+│  │  │ - description│ - updated_at    │ - role                   │   │ │
+│  │  │ - completed  │                 │ - content                │   │ │
+│  │  │ - created_at │                 │ - created_at             │   │ │
+│  │  │ - updated_at │                 │                          │   │ │
+│  │  └──────────────┴─────────────────┴──────────────────────────┘   │ │
+│  │  - Connection pooling enabled                                     │ │
+│  │  - Indexes on user_id (ALL tables)                                │ │
+│  │  - ACID transactions                                              │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1.2 Technology Stack Implementation
+
+| Layer | Component | Technology | Version | Purpose |
+|-------|-----------|------------|---------|---------|
+| **Frontend** | UI Framework | OpenAI ChatKit | Latest | Conversational interface |
+| | Domain Config | OpenAI Domain Allowlist | - | Production security |
+| **API** | Web Framework | FastAPI | 0.100+ | REST API server |
+| | ASGI Server | Uvicorn | Latest | Production server |
+| **AI** | Agent Framework | OpenAI Agents SDK | Latest | AI orchestration |
+| | LLM Provider | OpenAI GPT | GPT-4 | Language understanding |
+| **Tools** | MCP Framework | Official MCP SDK | Latest | Tool protocol |
+| **Data** | ORM | SQLModel | Latest | Database models |
+| | Database | Neon PostgreSQL | Latest | Persistent storage |
+| **Auth** | Authentication | Better Auth | Latest | User management |
+
+---
+
+## 2. STATELESS CHAT FLOW (DETAILED)
+
+### 2.1 Request-Response Cycle
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ STEP 1: USER SENDS MESSAGE                                          │
+│ ChatKit UI → POST /api/{user_id}/chat                               │
+│ Body: {"conversation_id": 123, "message": "Add buy groceries"}      │
+└──────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ STEP 2: API ENDPOINT RECEIVES REQUEST                               │
+│ FastAPI Handler:                                                     │
+│   - Extract user_id from path parameter                             │
+│   - Validate user_id format                                         │
+│   - Parse JSON body (conversation_id, message)                      │
+│   - Log request for monitoring                                      │
+└──────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ STEP 3: LOAD CONVERSATION CONTEXT FROM DATABASE                     │
+│ Database Query:                                                      │
+│   IF conversation_id provided:                                      │
+│     - SELECT * FROM conversations WHERE id=? AND user_id=?          │
+│     - SELECT * FROM messages WHERE conversation_id=? AND user_id=?  │
+│     - ORDER BY created_at DESC LIMIT 50 (last 50 messages only)     │
+│     - REVERSE to chronological order (oldest first)                 │
+│   ELSE:                                                              │
+│     - INSERT INTO conversations (user_id) VALUES (?)                │
+│     - Get new conversation_id                                       │
+│                                                                      │
+│   CONTEXT WINDOW ENFORCEMENT (CRITICAL):                            │
+│   ✅ Only last 50 messages loaded into agent context                │
+│   ✅ Older messages remain in DB but NOT sent to agent              │
+│   ✅ Ensures consistent agent performance                           │
+│   ✅ Prevents context length errors from OpenAI API                 │
+│   ✅ Maintains conversation history for future retrieval            │
+│                                                                      │
+│   - Build message history array: [{role, content}, ...]             │
+│   - Maximum 50 messages in array                                    │
+└──────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ STEP 4: PERSIST USER MESSAGE TO DATABASE                            │
+│ Database Insert:                                                     │
+│   INSERT INTO messages (conversation_id, user_id, role, content)    │
+│   VALUES (?, ?, 'user', ?)                                          │
+│   - Commit transaction                                              │
+│   - Message now persisted before AI processing                      │
+└──────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ STEP 5: BUILD AGENT CONTEXT                                         │
+│ Agent Input Preparation:                                             │
+│   - conversation_history: Array of {role, content} from DB          │
+│     * MAXIMUM 50 messages (enforced in STEP 3)                      │
+│     * Ordered chronologically (oldest to newest)                    │
+│   - new_message: User's current message                             │
+│   - user_id: For tool context                                       │
+│   - available_tools: MCP tool definitions                           │
+│   Total context: [history (≤50)] + [new_message]                    │
+│                                                                      │
+│   CONTEXT WINDOW: Last 50 messages ONLY                             │
+│   - Prevents API token limit errors                                 │
+│   - Ensures consistent agent performance                            │
+│   - Older messages preserved in DB for audit/history                │
+└──────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ STEP 6: INVOKE OPENAI AGENT                                         │
+│ Agent Execution:                                                     │
+│   - OpenAI Agents SDK processes message array                       │
+│   - LLM analyzes user intent                                        │
+│   - LLM determines which MCP tool(s) to call                        │
+│   - Agent may invoke multiple tools in sequence                     │
+│   - Each tool call is function calling to MCP server                │
+│   - Agent aggregates tool results                                   │
+│   - LLM generates natural language response                         │
+└──────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ STEP 7: MCP TOOLS EXECUTE (IF TRIGGERED)                            │
+│ Example: add_task tool invoked                                      │
+│   - MCP server receives: add_task(user_id, title, description)      │
+│   - Tool validates inputs                                           │
+│   - Tool executes: INSERT INTO tasks (user_id, title, ...)          │
+│   - Tool returns: {task_id: 5, status: "created", title: "..."}    │
+│   - Result passed back to Agent                                     │
+│ Note: Tool is STATELESS - no memory between calls                   │
+└──────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ STEP 8: AGENT GENERATES RESPONSE                                    │
+│ Response Generation:                                                 │
+│   - Agent receives tool results                                     │
+│   - LLM crafts friendly confirmation message                        │
+│   - Example: "I've added 'Buy groceries' to your task list."       │
+│   - Response formatted as natural language                          │
+└──────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ STEP 9: PERSIST ASSISTANT RESPONSE TO DATABASE                      │
+│ Database Insert:                                                     │
+│   INSERT INTO messages (conversation_id, user_id, role, content)    │
+│   VALUES (?, ?, 'assistant', ?)                                     │
+│   - Update conversation.updated_at timestamp                        │
+│   - Commit transaction                                              │
+└──────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ STEP 10: RETURN RESPONSE TO CLIENT                                  │
+│ API Response:                                                        │
+│   {                                                                  │
+│     "conversation_id": 123,                                         │
+│     "response": "I've added 'Buy groceries' to your task list.",   │
+│     "tool_calls": [                                                 │
+│       {                                                              │
+│         "tool": "add_task",                                         │
+│         "parameters": {"user_id": "ziakhan", "title": "Buy..."},   │
+│         "result": {"task_id": 5, "status": "created", ...}         │
+│       }                                                              │
+│     ]                                                                │
+│   }                                                                  │
+│   - HTTP 200 OK                                                     │
+└──────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ STEP 11: CLEANUP - DISCARD ALL IN-MEMORY STATE                      │
+│ Stateless Cleanup:                                                   │
+│   - FastAPI handler function completes                              │
+│   - All local variables discarded                                   │
+│   - No session data retained                                        │
+│   - No cache entries created                                        │
+│   - Database connection returned to pool                            │
+│   - Server ready for NEXT independent request                       │
+│ CRITICAL: Zero state remains in application memory                  │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 2.2 Stateless Architecture Benefits
+
+| Benefit | Implementation Detail |
+|---------|----------------------|
+| **Horizontal Scalability** | Any server instance can handle any request - no session affinity needed |
+| **Resilience** | Server crash/restart loses no data - conversation continues seamlessly |
+| **Load Balancing** | Round-robin or any distribution strategy works without sticky sessions |
+| **Testing** | Each request is reproducible - integration tests are deterministic |
+| **Debugging** | Request tracing is straightforward - no hidden state to track |
+| **Development** | Local development matches production behavior exactly |
+
+---
+
+## 3. DATABASE MODELS
+
+### 3.1 Task Model (SQLModel Schema)
+
+```python
+# File: backend/app/models/task.py
+
+from sqlmodel import SQLModel, Field
+from typing import Optional
+from datetime import datetime
+
+class Task(SQLModel, table=True):
+    """
+    Task model for todo items.
+    Inherits from Phase II but simplified for Phase III.
+    """
+    __tablename__ = "tasks"
+    
+    # Primary Key
+    id: Optional[int] = Field(default=None, primary_key=True)
+    
+    # User Association (MANDATORY for isolation)
+    user_id: str = Field(index=True, nullable=False)
+    
+    # Task Content
+    title: str = Field(max_length=200, nullable=False)
+    description: Optional[str] = Field(default="", max_length=1000)
+    
+    # Task Status
+    completed: bool = Field(default=False, index=True)
+    
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Database Constraints
+    class Config:
+        # Ensure user_id is always indexed
+        indexes = [
+            {"fields": ["user_id"], "unique": False},
+            {"fields": ["user_id", "completed"], "unique": False}
+        ]
+```
+
+**Key Design Decisions**:
+- `completed` as boolean (not status string) - simpler for Phase III
+- `user_id` as string (prepared for Better Auth integration)
+- Removed priority/due_date from Phase II to focus on core chatbot functionality
+- `created_at` and `updated_at` for audit trail
+- Indexes on `user_id` and `completed` for fast queries
+
+---
+
+### 3.2 Conversation Model (SQLModel Schema)
+
+```python
+# File: backend/app/models/conversation.py
+
+from sqlmodel import SQLModel, Field
+from typing import Optional
+from datetime import datetime
+
+class Conversation(SQLModel, table=True):
+    """
+    Conversation model for chat sessions.
+    Tracks conversation threads between user and AI.
+    """
+    __tablename__ = "conversations"
+    
+    # Primary Key
+    id: Optional[int] = Field(default=None, primary_key=True)
+    
+    # User Association (MANDATORY)
+    user_id: str = Field(index=True, nullable=False)
+    
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Optional: Status for archiving old conversations
+    # status: str = Field(default="active")  # active, archived
+    
+    class Config:
+        indexes = [
+            {"fields": ["user_id"], "unique": False},
+            {"fields": ["user_id", "updated_at"], "unique": False}
+        ]
+```
+
+**Key Design Decisions**:
+- Minimal fields - just ID, user, and timestamps
+- Integer primary key for simplicity
+- `updated_at` updated whenever new message added
+- Can extend with status, title, metadata in future
+
+---
+
+### 3.3 Message Model (SQLModel Schema)
+
+```python
+# File: backend/app/models/message.py
+
+from sqlmodel import SQLModel, Field
+from typing import Optional, Literal
+from datetime import datetime
+
+class Message(SQLModel, table=True):
+    """
+    Message model for conversation history.
+    Stores both user messages and assistant responses.
+    """
+    __tablename__ = "messages"
+    
+    # Primary Key
+    id: Optional[int] = Field(default=None, primary_key=True)
+    
+    # Conversation Association
+    conversation_id: int = Field(foreign_key="conversations.id", index=True)
+    
+    # User Association (MANDATORY for security)
+    user_id: str = Field(index=True, nullable=False)
+    
+    # Message Content
+    role: Literal["user", "assistant"] = Field(nullable=False)
+    content: str = Field(nullable=False)
+    
+    # Timestamp
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    
+    # Optional: Metadata for tool calls, errors, etc.
+    # metadata: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    
+    class Config:
+        indexes = [
+            {"fields": ["conversation_id", "created_at"], "unique": False},
+            {"fields": ["user_id"], "unique": False}
+        ]
+```
+
+**Key Design Decisions**:
+- `role` is enum-like (user/assistant) for type safety
+- `conversation_id` foreign key for grouping
+- `created_at` indexed for efficient chronological sorting
+- **Context Window**: Only last 50 messages loaded into agent context
+  * All messages persisted to DB
+  * Query uses `ORDER BY created_at DESC LIMIT 50`
+  * Prevents context length errors
+  * Maintains full history for audit/retrieval
+- `created_at` indexed for chronological retrieval
+- `user_id` indexed for security queries
+- Can extend with metadata JSON field for tool call details
+
+---
+
+### 3.4 Database Relationships
+
+```
+conversations (1) ──< messages (N)
+    │
+    └─ user_id (indexed)
+    
+tasks (N) ─── user_id (indexed)
+
+messages (N) ─── user_id (indexed)
+```
+
+**No Foreign Key Between Tasks and Conversations**:
+- Tasks are independent entities
+- Conversations reference tasks by ID in natural language
+- AI agent resolves task references dynamically
+- Decoupled design for flexibility
+
+---
+
+### 3.5 Database Indexes Strategy
+
+| Table | Index | Purpose | Query Pattern |
+|-------|-------|---------|---------------|
+| tasks | user_id | User isolation | WHERE user_id = ? |
+| tasks | (user_id, completed) | Filtered lists | WHERE user_id = ? AND completed = ? |
+| conversations | user_id | User's conversations | WHERE user_id = ? |
+| conversations | (user_id, updated_at) | Recent conversations | WHERE user_id = ? ORDER BY updated_at DESC |
+| messages | conversation_id | Load conversation | WHERE conversation_id = ? |
+| messages | (conversation_id, created_at) | Chronological order | WHERE conversation_id = ? ORDER BY created_at ASC |
+| messages | user_id | Security check | WHERE user_id = ? |
+
+---
+
+## 4. MCP SERVER ROLE AND BOUNDARIES
+
+### 4.1 MCP Server Responsibilities
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        MCP SERVER                                   │
+│                                                                     │
+│  RESPONSIBILITIES:                                                  │
+│  ✅ Expose task operations as standardized MCP tools               │
+│  ✅ Execute database operations (CRUD on tasks)                    │
+│  ✅ Enforce user isolation (user_id filtering)                     │
+│  ✅ Validate input parameters                                      │
+│  ✅ Return structured responses                                    │
+│  ✅ Handle database errors gracefully                              │
+│  ✅ Log tool invocations for debugging                             │
+│                                                                     │
+│  NOT RESPONSIBLE FOR:                                               │
+│  ❌ Natural language understanding                                 │
+│  ❌ Conversation management                                        │
+│  ❌ Intent detection                                               │
+│  ❌ Response generation                                            │
+│  ❌ User authentication                                            │
+│  ❌ Session management                                             │
+│  ❌ Business logic beyond task CRUD                                │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.2 MCP Tool Boundaries
+
+Each MCP tool is a **pure function** with clear boundaries:
+
+```python
+# Conceptual Tool Structure
+
+async def mcp_tool(user_id: str, **params) -> dict:
+    """
+    INPUT BOUNDARY:
+    - Receives: user_id + operation-specific parameters
+    - Validates: Parameter types, lengths, formats
+    - Rejects: Invalid inputs with structured error
+    
+    PROCESSING BOUNDARY:
+    - Database operation: INSERT, SELECT, UPDATE, or DELETE
+    - User isolation: Always filter by user_id
+    - Transaction: Atomic operation
+    
+    OUTPUT BOUNDARY:
+    - Returns: Structured dict {task_id, status, title}
+    - Errors: Structured error dict {error, message}
+    - NO side effects beyond database
+    
+    STATE BOUNDARY:
+    - NO global variables
+    - NO class-level state
+    - NO caching
+    - NO session data
+    - Pure function: same input → same output
+    """
+    pass
+```
+
+### 4.3 MCP Server Implementation Architecture
+
+```
+backend/
+├── app/
+│   ├── mcp/
+│   │   ├── __init__.py
+│   │   ├── server.py              # MCP server initialization
+│   │   ├── tools/
+│   │   │   ├── __init__.py
+│   │   │   ├── add_task.py        # add_task tool implementation
+│   │   │   ├── list_tasks.py      # list_tasks tool implementation
+│   │   │   ├── complete_task.py   # complete_task tool implementation
+│   │   │   ├── delete_task.py     # delete_task tool implementation
+│   │   │   └── update_task.py     # update_task tool implementation
+│   │   └── schemas.py             # MCP tool input/output schemas
+│   └── ...
+```
+
+**Each tool file contains**:
+1. Tool definition (MCP protocol)
+2. Input validation schema
+3. Database operation logic
+4. Output formatting
+5. Error handling
+
+---
+
+## 5. TOOL INVOCATION FLOW FROM AGENT
+
+### 5.1 Agent-to-MCP Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ 1. USER MESSAGE RECEIVED                                            │
+│    "Add a task to buy groceries"                                    │
+└─────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 2. OPENAI AGENT ANALYZES INTENT                                     │
+│    LLM Processing:                                                  │
+│    - Intent: CREATE_TASK                                            │
+│    - Extracted: title="Buy groceries"                               │
+│    - Selected Tool: add_task                                        │
+└─────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 3. AGENT PREPARES TOOL CALL                                         │
+│    Function Call:                                                   │
+│    {                                                                │
+│      "tool": "add_task",                                           │
+│      "parameters": {                                                │
+│        "user_id": "ziakhan",                                       │
+│        "title": "Buy groceries",                                   │
+│        "description": ""                                            │
+│      }                                                              │
+│    }                                                                │
+└─────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 4. MCP SERVER RECEIVES TOOL CALL                                    │
+│    MCP Protocol Handler:                                            │
+│    - Validates tool name: "add_task" exists                        │
+│    - Validates parameters against schema                           │
+│    - Routes to add_task tool implementation                        │
+└─────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 5. add_task TOOL EXECUTES                                           │
+│    Tool Logic:                                                      │
+│    1. Validate inputs (user_id, title not empty)                   │
+│    2. Connect to database                                          │
+│    3. Execute INSERT:                                               │
+│       INSERT INTO tasks (user_id, title, description, completed)   │
+│       VALUES ('ziakhan', 'Buy groceries', '', false)               │
+│    4. Get inserted task_id (e.g., 5)                               │
+│    5. Commit transaction                                           │
+│    6. Format response                                              │
+└─────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 6. TOOL RETURNS RESULT                                              │
+│    Tool Response:                                                   │
+│    {                                                                │
+│      "task_id": 5,                                                 │
+│      "status": "created",                                          │
+│      "title": "Buy groceries"                                      │
+│    }                                                                │
+└─────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 7. AGENT RECEIVES TOOL RESULT                                       │
+│    Agent Context Update:                                            │
+│    - Tool call succeeded                                           │
+│    - Task created with ID 5                                        │
+│    - Title: "Buy groceries"                                        │
+└─────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 8. AGENT GENERATES RESPONSE                                         │
+│    LLM Response Generation:                                         │
+│    Input: Tool result + conversation context                       │
+│    Output: "I've added 'Buy groceries' to your task list."        │
+└─────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 9. RESPONSE RETURNED TO USER                                        │
+│    Via Chat API → ChatKit UI                                        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 5.2 Multi-Tool Invocation Example
+
+**User**: "Delete the meeting task"
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ AGENT REASONING:                                                    │
+│ - User wants to delete a task                                       │
+│ - Task identified by title "meeting"                                │
+│ - Need to find task ID first                                        │
+│ - Strategy: list_tasks → find matching → delete_task               │
+└─────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ TOOL CALL 1: list_tasks                                             │
+│ Parameters:                                                         │
+│   {                                                                 │
+│     "user_id": "ziakhan",                                          │
+│     "status": "all"                                                │
+│   }                                                                 │
+│ Result:                                                             │
+│   [                                                                 │
+│     {"id": 3, "title": "Team meeting", "completed": false},       │
+│     {"id": 7, "title": "Client meeting", "completed": false}      │
+│   ]                                                                 │
+└─────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ AGENT ANALYSIS:                                                     │
+│ - Multiple matches found                                            │
+│ - Options: Ask user which one OR delete first match                │
+│ - Decision: Ask for clarification                                  │
+└─────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ AGENT RESPONSE:                                                     │
+│ "I found 2 tasks with 'meeting':                                   │
+│  3. Team meeting                                                    │
+│  7. Client meeting                                                  │
+│  Which one would you like to delete?"                               │
+└─────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ USER CLARIFICATION: "Delete task 3"                                 │
+└─────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ TOOL CALL 2: delete_task                                            │
+│ Parameters:                                                         │
+│   {                                                                 │
+│     "user_id": "ziakhan",                                          │
+│     "task_id": 3                                                   │
+│   }                                                                 │
+│ Result:                                                             │
+│   {                                                                 │
+│     "task_id": 3,                                                  │
+│     "status": "deleted",                                           │
+│     "title": "Team meeting"                                        │
+│   }                                                                 │
+└─────────────────────────────────────────────────────────────────────┘
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ AGENT FINAL RESPONSE:                                               │
+│ "I've deleted 'Team meeting' from your task list."                 │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 6. SEQUENCE DIAGRAM (TEXTUAL)
+
+### 6.1 Complete Request-Response Sequence
+
+```
+Actor: User
+Component: ChatKit
+Component: FastAPI
+Component: AgentRunner
+Component: MCPServer
+Component: Database
+
+────────────────────────────────────────────────────────────────────────
+
+User → ChatKit: Type "Add buy groceries"
+
+ChatKit → FastAPI: POST /api/ziakhan/chat
+                    {conversation_id: 123, message: "Add buy groceries"}
+
+FastAPI → Database: SELECT * FROM conversations WHERE id=123 AND user_id='ziakhan'
+Database → FastAPI: {id: 123, user_id: 'ziakhan', ...}
+
+FastAPI → Database: SELECT * FROM messages WHERE conversation_id=123
+Database → FastAPI: [{role:'user', content:'...'}, {role:'assistant', ...}, ...]
+
+FastAPI → Database: INSERT INTO messages (conversation_id, user_id, role, content)
+                    VALUES (123, 'ziakhan', 'user', 'Add buy groceries')
+Database → FastAPI: Success (message_id: 456)
+
+FastAPI → AgentRunner: run_agent(
+                         messages=[history + new_message],
+                         tools=[add_task, list_tasks, ...]
+                       )
+
+AgentRunner → OpenAI_LLM: Analyze intent with message history
+OpenAI_LLM → AgentRunner: Intent=CREATE_TASK, tool=add_task,
+                          params={title:"Buy groceries"}
+
+AgentRunner → MCPServer: call_tool("add_task", {
+                            user_id: "ziakhan",
+                            title: "Buy groceries"
+                          })
+
+MCPServer → Database: INSERT INTO tasks (user_id, title, completed)
+                      VALUES ('ziakhan', 'Buy groceries', false)
+Database → MCPServer: Success (task_id: 5)
+
+MCPServer → AgentRunner: {task_id: 5, status: "created", title: "Buy groceries"}
+
+AgentRunner → OpenAI_LLM: Generate response with tool result
+OpenAI_LLM → AgentRunner: "I've added 'Buy groceries' to your task list."
+
+AgentRunner → FastAPI: {
+                         response: "I've added 'Buy groceries' to your task list.",
+                         tool_calls: [{tool:"add_task", result:{...}}]
+                       }
+
+FastAPI → Database: INSERT INTO messages (conversation_id, user_id, role, content)
+                    VALUES (123, 'ziakhan', 'assistant', 'I've added...')
+Database → FastAPI: Success
+
+FastAPI → Database: UPDATE conversations SET updated_at=NOW() WHERE id=123
+Database → FastAPI: Success
+
+FastAPI → ChatKit: HTTP 200
+                   {
+                     conversation_id: 123,
+                     response: "I've added 'Buy groceries' to your task list.",
+                     tool_calls: [...]
+                   }
+
+ChatKit → User: Display: "I've added 'Buy groceries' to your task list."
+
+[End of Request Cycle - All State Discarded]
+```
+
+### 6.2 Error Handling Sequence
+
+```
+User → ChatKit: "Complete task 999"
+
+ChatKit → FastAPI: POST /api/ziakhan/chat
+                    {conversation_id: 123, message: "Complete task 999"}
+
+[Steps 1-6 same as above: load conversation, save message, invoke agent]
+
+AgentRunner → MCPServer: call_tool("complete_task", {
+                            user_id: "ziakhan",
+                            task_id: 999
+                          })
+
+MCPServer → Database: SELECT * FROM tasks WHERE id=999 AND user_id='ziakhan'
+Database → MCPServer: [] (empty result)
+
+MCPServer → AgentRunner: {error: "TASK_NOT_FOUND", message: "Task not found"}
+
+AgentRunner → OpenAI_LLM: Handle error gracefully
+OpenAI_LLM → AgentRunner: "I couldn't find task 999. Would you like to see your current tasks?"
+
+AgentRunner → FastAPI: {response: "I couldn't find task 999. ...", tool_calls: [...]}
+
+[Save response, return to user]
+
+ChatKit → User: Display error message with helpful suggestion
+```
+
+---
+
+## 7. SEPARATION OF CONCERNS
+
+### 7.1 Chat API Layer
+
+**File**: `backend/app/routes/chat.py`
+
+**Responsibilities**:
+1. HTTP request/response handling
+2. User authentication validation (user_id extraction)
+3. Request body parsing and validation
+4. Database operations for conversations and messages
+5. Agent invocation orchestration
+6. Response formatting
+7. Error handling and HTTP status codes
+8. Logging and monitoring
+
+**Does NOT Handle**:
+- Natural language understanding (delegated to Agent)
+- Task operations (delegated to MCP tools)
+- LLM interactions (delegated to Agent Runner)
+
+**Interface**:
+```python
+@router.post("/api/{user_id}/chat")
+async def chat_endpoint(
+    user_id: str,
+    request: ChatRequest,
+    db: Session = Depends(get_db)
+) -> ChatResponse:
+    """
+    Stateless chat endpoint.
+    
+    Responsibilities:
+    1. Validate user_id
+    2. Load/create conversation
+    3. Save user message
+    4. Invoke agent runner
+    5. Save assistant response
+    6. Return response
+    7. Discard state
+    """
+    pass
+```
+
+---
+
+### 7.2 Agent Runner Layer
+
+**File**: `backend/app/ai/agent_runner.py`
+
+**Responsibilities**:
+1. OpenAI Agents SDK integration
+2. Message history formatting for LLM
+3. Tool definitions registration
+4. Agent execution orchestration
+5. Tool call routing to MCP server
+6. Response aggregation
+7. Error handling from LLM or tools
+
+**Does NOT Handle**:
+- HTTP requests/responses (Chat API responsibility)
+- Database operations directly (MCP tools responsibility)
+- Conversation persistence (Chat API responsibility)
+
+**Interface**:
+```python
+async def run_agent(
+    messages: List[Message],
+    user_id: str,
+    available_tools: List[MCPTool]
+) -> AgentResponse:
+    """
+    Execute OpenAI Agent with MCP tools.
+    
+    Args:
+        messages: Conversation history + new message
+        user_id: For tool context
+        available_tools: MCP tool definitions
+    
+    Returns:
+        AgentResponse with text and tool calls
+    
+    Process:
+    1. Format messages for OpenAI SDK
+    2. Register MCP tools with agent
+    3. Run agent with retry logic
+    4. Extract response and tool calls
+    5. Return structured response
+    """
+    pass
+```
+
+**Agent Configuration**:
+```python
+# Agent system prompt
+AGENT_SYSTEM_PROMPT = """
+You are a helpful task management assistant. You help users manage their todo list through natural conversation.
+
+Available tools:
+- add_task: Create new tasks
+- list_tasks: View tasks (all, pending, or completed)
+- complete_task: Mark tasks as done
+- delete_task: Remove tasks
+- update_task: Modify task details
+
+Guidelines:
+1. Always confirm actions with friendly messages
+2. Include relevant task details in responses
+3. Handle errors gracefully with helpful suggestions
+4. Use natural, conversational language
+5. When task title is ambiguous, list tasks first to find ID
+"""
+```
+
+---
+
+### 7.3 MCP Tools Layer
+
+**Files**: `backend/app/mcp/tools/*.py`
+
+**Responsibilities** (per tool):
+1. Input parameter validation
+2. Database connection management
+3. SQL query execution with user_id filtering
+4. Transaction management
+5. Error handling and structured errors
+6. Result formatting per MCP specification
+
+**Does NOT Handle**:
+- Intent detection (Agent responsibility)
+- Response generation (Agent responsibility)
+- HTTP communication (Chat API responsibility)
+- Conversation management (Chat API responsibility)
+
+**Tool Template**:
+```python
+# backend/app/mcp/tools/add_task.py
+
+from typing import Optional
+from backend.app.models.task import Task
+from backend.app.database import get_db
+
+async def add_task(
+    user_id: str,
+    title: str,
+    description: str = ""
+) -> dict:
+    """
+    MCP Tool: Create a new task.
+    
+    Args:
+        user_id: User identifier (for isolation)
+        title: Task title (required)
+        description: Task description (optional)
+    
+    Returns:
+        {
+            "task_id": int,
+            "status": "created",
+            "title": str
+        }
+    
+    Raises:
+        ValueError: If title is empty or too long
+    """
+    # 1. Validate inputs
+    if not title or not title.strip():
+        raise ValueError("Task title is required")
+    if len(title) > 200:
+        raise ValueError("Title must be 200 characters or less")
+    
+    # 2. Create task
+    db = get_db()
+    task = Task(
+        user_id=user_id,
+        title=title.strip(),
+        description=description.strip(),
+        completed=False
+    )
+    
+    # 3. Save to database
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    
+    # 4. Return structured response
+    return {
+        "task_id": task.id,
+        "status": "created",
+        "title": task.title
+    }
+```
+
+---
+
+### 7.4 Layer Interaction Matrix
+
+| Layer | Calls | Called By | State |
+|-------|-------|-----------|-------|
+| **ChatKit UI** | Chat API | User | Frontend state only |
+| **Chat API** | Agent Runner, Database | ChatKit UI | STATELESS |
+| **Agent Runner** | MCP Tools, OpenAI LLM | Chat API | STATELESS |
+| **MCP Tools** | Database | Agent Runner | STATELESS |
+| **Database** | None | Chat API, MCP Tools | Persistent state |
+
+**Data Flow**:
+```
+User Input → ChatKit → Chat API → Database (read)
+                               ↓
+                         Agent Runner → MCP Tools → Database (write)
+                               ↓
+                         Database (read)
+                               ↓
+Response ← ChatKit ← Chat API ← Agent Runner
+```
+
+**State Management**:
+- **ChatKit**: Manages UI state only (input field, message history display)
+- **Chat API**: NO state - loads from DB, invokes agent, saves to DB, returns
+- **Agent Runner**: NO state - pure function execution
+- **MCP Tools**: NO state - pure database operations
+- **Database**: ONLY persistent state in the system
+
+---
+
+## 8. IMPLEMENTATION PHASES
+
+### Phase 1: Database Foundation (Week 1, Days 1-2)
+- [ ] Set up Neon PostgreSQL database
+- [ ] Create SQLModel schemas for Task, Conversation, Message
+- [ ] Implement database connection and session management
+- [ ] Create Alembic migrations
+- [ ] Test database operations locally
+- [ ] Deploy database to Neon
+- [ ] Verify connection from local development
+
+### Phase 2: MCP Server Implementation (Week 1, Days 3-4)
+- [ ] Set up Official MCP SDK
+- [ ] Implement add_task tool
+- [ ] Implement list_tasks tool
+- [ ] Implement complete_task tool
+- [ ] Implement delete_task tool
+- [ ] Implement update_task tool
+- [ ] Write unit tests for each tool
+- [ ] Test tools with mock agent calls
+
+### Phase 3: Agent Integration (Week 1, Days 5-6)
+- [ ] Set up OpenAI Agents SDK
+- [ ] Implement agent runner module
+- [ ] Register MCP tools with agent
+- [ ] Configure agent system prompt
+- [ ] Test agent with sample conversations
+- [ ] Implement error handling for LLM failures
+- [ ] Test multi-tool invocations
+
+### Phase 4: Chat API Development (Week 2, Days 1-2)
+- [ ] Create FastAPI application structure
+- [ ] Implement /api/{user_id}/chat endpoint
+- [ ] Implement conversation loading logic
+- [ ] Implement message persistence
+- [ ] Integrate agent runner
+- [ ] Implement response formatting
+- [ ] Add error handling and logging
+- [ ] Test API with Postman/curl
+
+### Phase 5: Frontend Integration (Week 2, Days 3-4)
+- [ ] Set up OpenAI ChatKit project
+- [ ] Configure domain allowlist on OpenAI platform
+- [ ] Implement ChatKit UI
+- [ ] Connect ChatKit to backend API
+- [ ] Test end-to-end conversation flow
+- [ ] Handle loading states and errors
+- [ ] Implement conversation history display
+
+### Phase 6: Testing & Deployment (Week 2, Days 5-7)
+- [ ] Write integration tests
+- [ ] Write end-to-end tests
+- [ ] Load testing (100 concurrent users)
+- [ ] Security testing (user isolation)
+- [ ] Deploy backend to production
+- [ ] Deploy frontend to Vercel
+- [ ] Configure production environment variables
+- [ ] Verify production deployment
+- [ ] Monitor performance and errors
+
+---
+
+## 9. CRITICAL SUCCESS FACTORS
+
+### 9.1 Stateless Architecture Verification
+
+**Test Scenarios**:
+1. ✅ Server restart mid-conversation → User continues seamlessly
+2. ✅ Multiple backend instances → Same conversation accessible from any instance
+3. ✅ Load balancer switches servers → No interruption
+4. ✅ Memory usage stable → No memory leaks over time
+
+### 9.2 User Isolation Verification
+
+**Test Scenarios**:
+1. ✅ User A cannot access User B's tasks
+2. ✅ User A cannot access User B's conversations
+3. ✅ Attempting cross-user access returns 403 Forbidden
+4. ✅ Task IDs are not guessable across users
+
+### 9.3 MCP Tools Correctness
+
+**Test Scenarios**:
+1. ✅ Each tool returns expected format
+2. ✅ Tools handle errors gracefully
+3. ✅ Tools enforce user_id filtering
+4. ✅ Tools are idempotent where applicable
+5. ✅ Tools validate inputs correctly
+
+### 9.4 Conversation Quality
+
+**Test Scenarios**:
+1. ✅ Agent understands natural language variations
+2. ✅ Agent confirms actions appropriately
+3. ✅ Agent handles ambiguity with clarification
+4. ✅ Agent provides helpful error messages
+5. ✅ Agent maintains conversation context
+
+---
+
+## 10. RISK MITIGATION
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| OpenAI API downtime | High | Implement retry logic, graceful degradation |
+| Database connection issues | High | Connection pooling, health checks, fallback |
+| LLM misinterprets user intent | Medium | Comprehensive system prompt, clarification prompts |
+| Tool invocation errors | Medium | Structured error responses, agent error handling |
+| ChatKit domain configuration | Medium | Clear documentation, validation script |
+| Performance degradation | Medium | Database indexing, query optimization, caching |
+| User isolation breach | Critical | Automated security tests, code review |
+
+---
+
+## 11. MONITORING AND OBSERVABILITY
+
+### Metrics to Track
+
+**Application Metrics**:
+- Request latency (p50, p95, p99)
+- Error rate by error type
+- Conversation creation rate
+- Message volume per user
+- Active conversations count
+
+**AI Metrics**:
+- OpenAI API latency
+- Token usage per request
+- Tool invocation frequency
+- Tool success/failure rate
+
+**Database Metrics**:
+- Query execution time
+- Connection pool utilization
+- Transaction failure rate
+- Database size growth
+
+**Business Metrics**:
+- Daily active users
+- Tasks created per day
+- Conversation length average
+- User retention rate
+
+---
+
+## DOCUMENT APPROVAL
+
+**Approved By**: _________________  
+**Date**: January 3, 2026  
+**Version**: 1.0.0  
+
+**Change Log**:
+- v1.0.0 (2026-01-03): Initial plan based on speckit.specify
+
+---
+
+*This plan is executable and must be followed during implementation. Any deviations require formal change request and architectural review.*
