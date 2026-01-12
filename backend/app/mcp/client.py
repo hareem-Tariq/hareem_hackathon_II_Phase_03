@@ -76,13 +76,15 @@ def get_mcp_tools() -> List[Dict[str, Any]]:
     In async contexts, use get_mcp_tools_from_server() directly.
     """
     import asyncio
-    import nest_asyncio
     
     # Allow nested event loops (needed when already in async context)
     try:
+        import nest_asyncio
         nest_asyncio.apply()
-    except:
+    except ImportError:
         pass  # nest_asyncio might not be installed, that's ok
+    except Exception:
+        pass  # nest_asyncio might fail to apply, that's ok
     
     # Try to get existing loop, or create new one
     try:
