@@ -22,11 +22,11 @@ export default function ConversationInfo({ conversationId, messageCount }: Conve
       marginTop: '0.25rem'
     }}>
       <span>
-        💬 Conversation: <strong>#{conversationId}</strong>
+        ID: <strong>#{conversationId}</strong>
       </span>
       <span>|</span>
       <span>
-        📝 Messages: <strong>{messageCount}</strong>
+        Messages: <strong>{messageCount}</strong>
       </span>
       <span>|</span>
       <span style={{ color: '#4caf50' }}>

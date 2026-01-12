@@ -19,12 +19,12 @@ export default function ToolCallDisplay({ toolCalls }: ToolCallDisplayProps) {
 
   const getToolIcon = (tool: string): string => {
     switch (tool) {
-      case 'add_task': return '➕';
-      case 'list_tasks': return '📋';
-      case 'update_task': return '✏️';
-      case 'complete_task': return '✅';
-      case 'delete_task': return '🗑️';
-      default: return '🔧';
+      case 'add_task': return '+';
+      case 'list_tasks': return '☰';
+      case 'update_task': return '⟳';
+      case 'complete_task': return '✓';
+      case 'delete_task': return '×';
+      default: return '⚙';
     }
   };
 
@@ -72,7 +72,18 @@ export default function ToolCallDisplay({ toolCalls }: ToolCallDisplayProps) {
             borderLeft: `3px solid ${getToolColor(tc.tool, !!tc.error)}`
           }}
         >
-          <span style={{ fontSize: '1.2rem' }}>{getToolIcon(tc.tool)}</span>
+          <span style={{ 
+            fontSize: '1rem', 
+            fontWeight: 600,
+            width: '24px',
+            height: '24px',
+            borderRadius: '6px',
+            backgroundColor: getToolColor(tc.tool, !!tc.error) + '15',
+            color: getToolColor(tc.tool, !!tc.error),
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>{getToolIcon(tc.tool)}</span>
           <div style={{ flex: 1 }}>
             {tc.error ? (
               <span style={{ color: '#f44336' }}>

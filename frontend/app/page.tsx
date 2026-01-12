@@ -148,7 +148,23 @@ export default function Home() {
                         margin: '0 auto',
                         minHeight: '50vh'
                       }}>
-                        <div style={{ fontSize: '56px', marginBottom: '24px' }}>💬</div>
+                        <div style={{ 
+                          fontSize: '48px', 
+                          marginBottom: '24px',
+                          width: '72px',
+                          height: '72px',
+                          borderRadius: '16px',
+                          background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'white',
+                          boxShadow: '0 4px 14px rgba(16, 163, 127, 0.25)'
+                        }}>
+                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                          </svg>
+                        </div>
                         <h2 style={{ 
                           fontSize: '28px', 
                           fontWeight: 600, 
@@ -175,9 +191,9 @@ export default function Home() {
                   let messageText = msg.message;
                   if (msg.direction === 'incoming' && msg.toolCalls && msg.toolCalls.length > 0) {
                     const toolSummary = msg.toolCalls.map(tc => 
-                      tc.error ? `❌ ${tc.tool}` : `✅ ${tc.tool}`
+                      tc.error ? `✗ ${tc.tool}` : `✓ ${tc.tool}`
                     ).join(' | ');
-                    messageText += `\n\n🔧 Actions: ${toolSummary}`;
+                    messageText += `\n\n⚙ Actions: ${toolSummary}`;
                   }
                   
                   return (

@@ -34,6 +34,7 @@ export default function Sidebar({ conversationId }: SidebarProps) {
         
         {/* New Chat Button */}
         <button
+          onClick={() => window.location.reload()}
           style={{
             width: '100%',
             padding: '0.625rem 0.75rem',

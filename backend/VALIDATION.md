@@ -1,15 +1,18 @@
 # Database Validation Instructions
 
 ## Prerequisites
+
 1. Create a `.env` file in the `backend` directory with your Neon credentials:
-   ```
-   DATABASE_URL=postgresql://neondb_owner:npg_Jvh3Kdk0ublf@ep-round-feather-adjq5n96-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require
+
+   ```env
+   DATABASE_URL=postgresql://user:password@host-pooler.region.aws.neon.tech/neondb?sslmode=require
    OPENAI_API_KEY=your_openai_api_key_here
    ENV=development
    DEBUG=true
    ```
 
 2. Install backend dependencies:
+
    ```powershell
    cd backend
    pip install -r requirements.txt
@@ -18,32 +21,38 @@
 ## Run Validation
 
 ### Option 1: Run validation script
+
 ```powershell
 cd backend
 python validate_db.py
 ```
 
 This will test:
+
 - ✓ Database connection
 - ✓ Schema creation (tables: tasks, conversations, messages)
 - ✓ CRUD operations
 - ✓ No credentials logged
 
 ### Option 2: Start the backend server
+
 ```powershell
 cd backend
 uvicorn app.main:app --reload
 ```
 
 Check startup logs for:
+
 - `✓ Database connection successful`
 - `✓ Database tables initialized`
 - No database passwords visible in logs
 
 ### Option 3: Test via API
+
 1. Start backend server (see Option 2)
-2. Open http://localhost:8000/docs
+2. Open <http://localhost:8000/docs>
 3. Test the `/api/{user_id}/chat` endpoint with:
+
    ```json
    {
      "message": "Add a task to test database"
@@ -53,7 +62,8 @@ Check startup logs for:
 ## Expected Results
 
 ### Successful Validation
-```
+
+```text
 ============================================================
 DATABASE VALIDATION SCRIPT
 ============================================================
@@ -94,16 +104,19 @@ Credentials............. ✓ PASS
 ## Troubleshooting
 
 ### Connection Failed
+
 - Verify DATABASE_URL is correct
 - Check Neon database is running
 - Verify SSL is enabled (`sslmode=require`)
 - Check firewall/network settings
 
 ### Schema Creation Failed
+
 - Ensure database user has CREATE TABLE permissions
 - Check Neon database storage limits
 
 ### CRUD Operations Failed
+
 - Verify database user has INSERT/UPDATE/DELETE permissions
 - Check database constraints
 

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import ConversationInfo from '../components/ConversationInfo';
 
-const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const USER_ID = process.env.NEXT_PUBLIC_USER_ID || 'demo_user';
 const DOMAIN_KEY = process.env.NEXT_PUBLIC_OPENAI_DOMAIN_KEY || '';
 
