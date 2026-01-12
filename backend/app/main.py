@@ -66,13 +66,16 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://frontend-nu-seven-63.vercel.app",
         "https://frontend-phi-ruby-64.vercel.app",
+        "https://frontend-btqkijl9r-hamzas-projects-04482650.vercel.app",
+        "https://frontend-g5ty6z1t8-hamzas-projects-04482650.vercel.app",
         "http://localhost:3000",
         "http://localhost:3001"
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-OpenAI-Domain-Key"],
+    allow_headers=["Authorization", "Content-Type", "X-OpenAI-Domain-Key", "X-Domain-Key"],
 )
 
 # Register routes
